@@ -741,11 +741,7 @@ impl GameState {
                 } else {
                     let points = 50 * snake.segments.len() as u32;
                     snake.score += points;
-                    tracing::info!(
-                        "[FOOD] {} ate ENEMY food (+{} points)",
-                        snake.color,
-                        points
-                    );
+                    tracing::info!("[FOOD] {} ate ENEMY food (+{} points)", snake.color, points);
                 }
 
                 // Respawn the eaten food for its original owner
