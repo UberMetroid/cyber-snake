@@ -25,32 +25,6 @@
     width: 100%;
     max-width: 600px;
   }
-  #header {
-    width: 100%;
-    padding: 10px 0;
-    display: flex;
-    justify-content: center;
-  }
-  #spawnBtn {
-    background: transparent;
-    border: 2px solid #0ff;
-    color: #0ff;
-    padding: 12px 40px;
-    font-family: 'Courier New', monospace;
-    font-size: 18px;
-    cursor: pointer;
-    text-shadow: 0 0 10px #0ff;
-    letter-spacing: 4px;
-    transition: all 0.2s;
-  }
-  #spawnBtn:hover:not(:disabled) {
-    background: rgba(0, 255, 255, 0.15);
-    box-shadow: 0 0 30px #0ff;
-  }
-  #spawnBtn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
   canvas {
     display: block;
     width: 100%;
@@ -288,9 +262,6 @@
 </head>
 <body>
 <div id="container">
-  <div id="header">
-    <button id="spawnBtn" disabled>SPAWN</button>
-  </div>
   <canvas id="game" width="600" height="600"></canvas>
   <div id="stats">
     <div class="stat-item">
@@ -327,23 +298,6 @@
     <h3>// SCOREBOARD</h3>
     <div id="scores"></div>
   </div>
-
-  <div id="legend">
-    <h3>// HOW TO PLAY</h3>
-    <p><strong>Move:</strong> Arrow Keys or D-Pad</p>
-    <p><strong>Action:</strong> Spacebar or Action Button</p>
-    <p><strong>Food:</strong> Circles = Faster. Rings = Longer. Eat YOUR COLOR to charge Super Mode!</p>
-    <p><strong>Combat:</strong> Hit another snake. If you are LONGER or FASTER, you destroy them.</p>
-    <p><strong>Powerups:</strong> Pick up crates. Press Action to activate.</p>
-    <ul>
-      <li>⚡ <strong>SPEED</strong></li>
-      <li>🛡️ <strong>SHIELD</strong></li>
-      <li>💣 <strong>BOMB</strong></li>
-      <li>👻 <strong>GHOST</strong></li>
-      <li>🧲 <strong>MAGNET</strong></li>
-      <li>⬆️ <strong>GROW</strong></li>
-    </ul>
-  </div>
 </div>
 
 <div id="adminPanel">
@@ -352,11 +306,29 @@
   <button id="adminCloseBtn">CLOSE</button>
 </div>
 
-<div id="overlay">
+<div id="overlay" class="show">
   <div id="overlayContent">
-    <h1 id="overlayTitle">TERMINATED</h1>
-    <p id="overlayMsg">SCORE: 0</p>
-    <button id="overlayBtn">RESPAWN</button>
+    <h1 id="overlayTitle">CYBER_SNAKE</h1>
+    <p id="overlayMsg">CONNECTING...</p>
+    
+    <div id="legend">
+      <h3>// HOW TO PLAY</h3>
+      <p><strong>Move:</strong> Arrow Keys or D-Pad</p>
+      <p><strong>Action:</strong> Spacebar or Action Button</p>
+      <p><strong>Food:</strong> Circles = Faster. Rings = Longer. Eat YOUR COLOR to charge Super Mode!</p>
+      <p><strong>Combat:</strong> Hit another snake. If you are LONGER or FASTER, you destroy them.</p>
+      <p><strong>Powerups:</strong> Pick up crates. Press Action to activate.</p>
+      <ul>
+        <li>⚡ <strong>SPEED</strong></li>
+        <li>🛡️ <strong>SHIELD</strong></li>
+        <li>💣 <strong>BOMB</strong></li>
+        <li>👻 <strong>GHOST</strong></li>
+        <li>🧲 <strong>MAGNET</strong></li>
+        <li>⬆️ <strong>GROW</strong></li>
+      </ul>
+    </div>
+
+    <button id="overlayBtn" disabled>WAITING FOR SERVER</button>
   </div>
 </div>
 
@@ -364,7 +336,6 @@
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const container = document.getElementById('container');
-const spawnBtn = document.getElementById('spawnBtn');
 const scoreValue = document.getElementById('scoreValue');
 const scoresEl = document.getElementById('scores');
 const overlay = document.getElementById('overlay');
@@ -451,7 +422,7 @@ function connect() {
   ws.onclose = () => {
     console.log('[WS] Disconnected from server');
     connected = false;
-    spawnBtn.disabled = true;
+    overlayBtn.disabled = true;
     showOverlay('', 'DISCONNECTED', 'Connection lost<br><button onclick="location.reload()">RELOAD</button>');
   };
   
@@ -475,8 +446,9 @@ function handleMessage(msg) {
       myId = msg.id;
       myColor = msg.snake.color;
       myName = msg.snake.name;
-      spawnBtn.disabled = false;
-      spawnBtn.onclick = spawn;
+      overlayBtn.disabled = false;
+      overlayBtn.textContent = 'SPAWN';
+      overlayBtn.onclick = spawn;
       console.log('[WS] Welcome:', myColor, myName);
       break;
       
@@ -505,8 +477,7 @@ function handleMessage(msg) {
 function spawn() {
   if (spawned) return;
   spawned = true;
-  spawnBtn.disabled = true;
-  spawnBtn.textContent = 'SPAWNED';
+  hideOverlay();
   send('spawn');
 }
 
@@ -568,6 +539,8 @@ function updateUI() {
   if (!alive && spawned && !overlay.classList.contains('show')) {
     const reasonMsg = deathReason ? (DEATH_MESSAGES[deathReason] || deathReason) : 'UNKNOWN';
     showOverlay('dead', 'TERMINATED', `${reasonMsg}<br>SCORE: ${score}<br><span class="blink">[ PRESS SPACE OR CLICK TO RESPAWN ]</span>`);
+    overlayBtn.textContent = 'RESPAWN';
+    overlayBtn.onclick = respawn;
   }
 }
 

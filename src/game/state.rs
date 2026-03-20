@@ -232,8 +232,8 @@ impl GameState {
         }
 
         let active_bots = self.snakes.values().filter(|s| s.is_bot && s.alive).count();
-        if active_bots < 2 {
-            for _ in 0..(2 - active_bots) {
+        if active_bots < 1 {
+            for _ in 0..(1 - active_bots) {
                 let id = format!("bot_{}", uuid::Uuid::new_v4());
                 let mut bot = self.create_snake(id.clone());
                 bot.is_bot = true;
