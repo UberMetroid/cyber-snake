@@ -1,7 +1,7 @@
 use crate::config::CONFIG;
 use crate::game::{
-    get_bonus_color, get_next_color, random_name, BonusFood, Direction, Food, HighScore, Point,
-    Powerup, PowerupType, Snake, Explosion,
+    get_bonus_color, get_next_color, random_name, BonusFood, Direction, Explosion, Food, HighScore,
+    Point, Powerup, PowerupType, Snake,
 };
 use chrono::Utc;
 use parking_lot::RwLock;
@@ -23,15 +23,34 @@ pub struct GameState {
 
 impl GameState {
     pub fn new() -> Self {
+        std::fs::create_dir_all("data")
+            .unwrap_or_else(|e| tracing::warn!("Failed to create data dir: {}", e));
+        let high_scores = Self::load_highscores();
+
         Self {
             snakes: HashMap::new(),
             foods: HashMap::new(),
             bonus_foods: Vec::new(),
             powerups: Vec::new(),
             explosions: Vec::new(),
-            high_scores: Vec::new(),
+            high_scores,
             tick: 0,
             start_time: Utc::now().timestamp_millis(),
+        }
+    }
+
+    fn load_highscores() -> Vec<HighScore> {
+        if let Ok(data) = std::fs::read_to_string("data/highscores.json") {
+            if let Ok(scores) = serde_json::from_str(&data) {
+                return scores;
+            }
+        }
+        Vec::new()
+    }
+
+    fn save_highscores(scores: &[HighScore]) {
+        if let Ok(data) = serde_json::to_string(scores) {
+            let _ = std::fs::write("data/highscores.json", data);
         }
     }
 
@@ -89,6 +108,22 @@ impl GameState {
     }
 
     pub fn remove_snake(&mut self, socket_id: &str) {
+        if let Some(snake) = self.snakes.get(socket_id) {
+            if snake.alive && snake.spawned {
+                let segments = snake.segments.clone();
+                self.drop_powerup(socket_id);
+                for seg in segments.iter().skip(1).step_by(2) {
+                    if self.bonus_foods.len() < 10 {
+                        self.bonus_foods.push(BonusFood::new(
+                            seg.x,
+                            seg.y,
+                            "#ffffff".to_string(),
+                            false,
+                        ));
+                    }
+                }
+            }
+        }
         self.snakes.remove(socket_id);
         self.foods.remove(socket_id);
     }
@@ -264,6 +299,11 @@ impl GameState {
             "BOMB" => {
                 let radius = 10;
                 let mut to_kill = Vec::new();
+                let killer_name = self
+                    .snakes
+                    .get(socket_id)
+                    .map(|s| s.name.clone())
+                    .unwrap_or_else(|| "UNKNOWN".to_string());
                 for (other_id, other_snake) in &self.snakes {
                     if other_id != socket_id && other_snake.alive && other_snake.spawned {
                         let other_head = other_snake.head();
@@ -274,7 +314,7 @@ impl GameState {
                     }
                 }
                 for id in to_kill {
-                    self.kill_snake(&id, "BOMB");
+                    self.kill_snake(&id, &format!("BOMBED BY {}", killer_name));
                     self.drop_powerup(&id);
                 }
 
@@ -385,8 +425,8 @@ impl GameState {
             }
         }
 
-        let mut kill_other: Option<String> = None;
-        let mut killed_by_other = false;
+        let mut kill_other: Option<(String, String)> = None;
+        let mut killed_by_other: Option<String> = None;
 
         if !ghost_active {
             for (other_id, other) in &self.snakes {
@@ -401,30 +441,35 @@ impl GameState {
                                 other.color,
                                 snake.color
                             );
-                            kill_other = Some(other_id.clone());
+                            kill_other = Some((other_id.clone(), other.name.clone()));
                         } else {
-                            killed_by_other = true;
+                            killed_by_other = Some(other.name.clone());
                         }
                         break;
                     }
                 }
-                if kill_other.is_some() || killed_by_other {
+                if kill_other.is_some() || killed_by_other.is_some() {
                     break;
                 }
             }
         }
 
-        if killed_by_other {
+        if let Some(killer_name) = killed_by_other {
             snake.alive = false;
-            snake.death_reason = Some("SNAKE".to_string());
-            tracing::info!("[DEATH] {} {} died: SNAKE", snake.color, snake.name);
+            snake.death_reason = Some(format!("KILLED BY {}", killer_name));
+            tracing::info!(
+                "[DEATH] {} {} died: KILLED BY {}",
+                snake.color,
+                snake.name,
+                killer_name
+            );
             self.snakes.insert(socket_id.to_string(), snake);
             self.drop_powerup(socket_id);
             return;
         }
 
-        if let Some(other_id) = kill_other {
-            self.kill_snake(&other_id, "RAM");
+        if let Some((other_id, _)) = kill_other {
+            self.kill_snake(&other_id, &format!("RAMMED BY {}", snake.name));
             self.drop_powerup(&other_id);
         }
 
@@ -640,7 +685,8 @@ impl GameState {
             .map(|(name, score)| HighScore::new(name.to_string(), score))
             .collect();
 
-        self.high_scores = top_10;
+        self.high_scores = top_10.clone();
+        Self::save_highscores(&top_10);
     }
 
     pub fn broadcast_state(&self) -> GameBroadcast<'_> {

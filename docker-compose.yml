@@ -12,6 +12,8 @@ services:
       - TICK_RATE=${TICK_RATE:-60}
       - COLS=${COLS:-30}
       - ROWS=${ROWS:-30}
+    volumes:
+      - ./data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8300/health"]

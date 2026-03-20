@@ -19,6 +19,7 @@ WORKDIR /app
 COPY --from=builder /app/target/release/cyber-snake /app/cyber-snake
 COPY public ./public
 
+VOLUME /app/data
 EXPOSE 8300
 
 CMD ["/app/cyber-snake"]
