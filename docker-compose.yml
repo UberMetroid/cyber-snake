@@ -9,7 +9,7 @@ services:
       - TZ=${TZ:-UTC}
       - RUST_LOG=${RUST_LOG:-info}
       - MAX_PLAYERS=${MAX_PLAYERS:-10}
-      - TICK_RATE=${TICK_RATE:-60}
+      - TICK_RATE=${TICK_RATE:-20}
       - COLS=${COLS:-30}
       - ROWS=${ROWS:-30}
     volumes:

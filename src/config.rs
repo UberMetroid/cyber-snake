@@ -26,9 +26,9 @@ impl Config {
                 .parse()
                 .unwrap_or(10),
             tick_rate: env::var("TICK_RATE")
-                .unwrap_or_else(|_| "60".into())
+                .unwrap_or_else(|_| "20".into())
                 .parse()
-                .unwrap_or(60),
+                .unwrap_or(20),
             cols: env::var("COLS")
                 .unwrap_or_else(|_| "30".into())
                 .parse()

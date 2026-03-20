@@ -369,7 +369,7 @@ impl GameState {
             effective_speed = (effective_speed as f32 * 0.5).max(1.0) as u32;
         }
 
-        let move_interval = (15 - effective_speed as i32).max(3) as u32;
+        let move_interval = (5 - effective_speed as i32).max(1) as u32;
         if snake.frame_count % move_interval != 0 {
             self.snakes.insert(socket_id.to_string(), snake);
             return;
