@@ -141,6 +141,27 @@
   .player-row.dead .name { text-decoration: line-through; opacity: 0.5; }
   .player-row.self .name { color: #fff; }
   
+  #legend {
+    width: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid #0ff;
+    padding: 10px;
+    font-size: 12px;
+    margin-bottom: 20px;
+    line-height: 1.4;
+  }
+  #legend h3 {
+    color: #0ff;
+    text-shadow: 0 0 10px #0ff;
+    margin-bottom: 10px;
+    font-size: 14px;
+    letter-spacing: 2px;
+  }
+  #legend p { margin-bottom: 5px; }
+  #legend strong { color: #0ff; }
+  #legend ul { list-style: none; padding-left: 10px; margin-top: 5px; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
+  #legend li { display: flex; align-items: center; gap: 5px; }
+  
   /* Mobile D-Pad Controls */
   #mobileControls {
     display: none;
@@ -306,6 +327,23 @@
     <h3>// SCOREBOARD</h3>
     <div id="scores"></div>
   </div>
+
+  <div id="legend">
+    <h3>// HOW TO PLAY</h3>
+    <p><strong>Move:</strong> Arrow Keys or D-Pad</p>
+    <p><strong>Action:</strong> Spacebar or Action Button</p>
+    <p><strong>Food:</strong> Circles = Faster. Rings = Longer. Eat YOUR COLOR to charge Super Mode!</p>
+    <p><strong>Combat:</strong> Hit another snake. If you are LONGER or FASTER, you destroy them.</p>
+    <p><strong>Powerups:</strong> Pick up crates. Press Action to activate.</p>
+    <ul>
+      <li>⚡ <strong>SPEED</strong></li>
+      <li>🛡️ <strong>SHIELD</strong></li>
+      <li>💣 <strong>BOMB</strong></li>
+      <li>👻 <strong>GHOST</strong></li>
+      <li>🧲 <strong>MAGNET</strong></li>
+      <li>⬆️ <strong>GROW</strong></li>
+    </ul>
+  </div>
 </div>
 
 <div id="adminPanel">
@@ -370,8 +408,8 @@ let fps = 0;
 let lastFpsUpdate = Date.now();
 let connected = false;
 
-const POWERUP_COLORS = { SPEED: '#ffff00', SHIELD: '#00ffff', BOMB: '#ff0000', GHOST: '#9900ff', MAGNET: '#ff00ff', GROW: '#00ff00', SHRINK: '#ff8800' };
-const POWERUP_SHAPES = { SPEED: '⚡', SHIELD: '🛡️', BOMB: '💣', GHOST: '👻', MAGNET: '🧲', GROW: '⬆️', SHRINK: '⬇️' };
+const POWERUP_COLORS = { SPEED: '#ffff00', SHIELD: '#00ffff', BOMB: '#ff0000', GHOST: '#9900ff', MAGNET: '#ff00ff', GROW: '#00ff00' };
+const POWERUP_SHAPES = { SPEED: '⚡', SHIELD: '🛡️', BOMB: '💣', GHOST: '👻', MAGNET: '🧲', GROW: '⬆️' };
 
 const DEATH_MESSAGES = {
   'WALL': 'WALL COLLISION',
@@ -748,8 +786,6 @@ function drawPowerup() {
       ctx.fillText('🧲', cx, cy);
     } else if (type === 'GROW') {
       ctx.fillText('⬆️', cx, cy);
-    } else if (type === 'SHRINK') {
-      ctx.fillText('⬇️', cx, cy);
     }
   }
   

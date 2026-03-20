@@ -447,12 +447,6 @@ impl GameState {
                     snake.score += 250;
                 }
             }
-            "SHRINK" => {
-                if let Some(snake) = self.snakes.get_mut(socket_id) {
-                    let new_len = (snake.segments.len() / 2).max(3);
-                    snake.segments.truncate(new_len);
-                }
-            }
             "BOMB" => {
                 let radius = 10;
                 let mut to_kill = Vec::new();
@@ -697,59 +691,73 @@ impl GameState {
         }
 
         let mut grew = false;
-        let mut spawn_new_food = false;
-        let mut new_food_super = false;
+        let mut eaten_food_id = None;
 
-        if let Some(food) = self.foods.get_mut(socket_id) {
+        for (food_id, food) in &self.foods {
             if new_head.x == food.x && new_head.y == food.y {
-                if shield_active {
-                    tracing::info!("[SHIELD] {} deflected food", snake.color);
-                } else {
-                    let is_own_food = food.color == snake.color;
-                    if is_own_food {
-                        if food.is_super || snake.super_meter >= 100 {
-                            tracing::info!(
-                                "[SUPER] {} {} activated SUPER MODE!",
-                                snake.color,
-                                snake.name
-                            );
-                            snake.active_effects.super_mode = Some(now + 5000);
-                            snake.active_effects.speed_boost = Some(now + 5000);
-                            snake.active_effects.shield = Some(now + 5000);
-                            snake.active_effects.magnet = Some(now + 5000);
-                            snake.super_meter = 100;
-                            snake.super_mode_start = Some(now);
-                            snake.own_food_count = 0;
-                        } else {
-                            grew = true;
-                            snake.super_meter = (snake.super_meter + 20).min(100);
-                            snake.own_food_count += 1;
-                            tracing::info!(
-                                "[FOOD] {} ate OWN food (+grow, meter: {}%)",
-                                snake.color,
-                                snake.super_meter
-                            );
-                        }
-                    } else {
-                        let points = 50 * snake.segments.len() as u32;
-                        snake.score += points;
-                        snake.super_meter = (snake.super_meter + 10).min(100);
-                        tracing::info!(
-                            "[FOOD] {} ate ENEMY food (+{} points)",
-                            snake.color,
-                            points
-                        );
-                    }
-                    spawn_new_food = true;
-                    new_food_super = snake.own_food_count >= 5;
-                }
+                eaten_food_id = Some(food_id.clone());
+                break;
             }
         }
 
-        if spawn_new_food {
-            let food_color = snake.color.clone();
-            if let Some(new_food) = self.spawn_food(socket_id, &food_color, new_food_super) {
-                self.foods.insert(socket_id.to_string(), new_food);
+        if let Some(fid) = eaten_food_id {
+            if shield_active {
+                tracing::info!("[SHIELD] {} deflected food", snake.color);
+            } else {
+                let food = self.foods.remove(&fid).unwrap();
+                let is_own_food = food.color == snake.color;
+
+                if food.is_ring {
+                    grew = true;
+                    tracing::info!("[FOOD] {} ate a ring (+length)", snake.color);
+                } else {
+                    snake.speed = (snake.speed + 1).min(4);
+                    tracing::info!("[FOOD] {} ate a circle (+speed)", snake.color);
+                }
+
+                if is_own_food {
+                    if food.is_super || snake.super_meter >= 100 {
+                        tracing::info!(
+                            "[SUPER] {} {} activated SUPER MODE!",
+                            snake.color,
+                            snake.name
+                        );
+                        snake.active_effects.super_mode = Some(now + 5000);
+                        snake.active_effects.speed_boost = Some(now + 5000);
+                        snake.active_effects.shield = Some(now + 5000);
+                        snake.active_effects.magnet = Some(now + 5000);
+                        snake.super_meter = 100;
+                        snake.super_mode_start = Some(now);
+                        snake.own_food_count = 0;
+                    } else {
+                        snake.super_meter = (snake.super_meter + 20).min(100);
+                        snake.own_food_count += 1;
+                        tracing::info!(
+                            "[FOOD] {} ate OWN food (meter: {}%)",
+                            snake.color,
+                            snake.super_meter
+                        );
+                    }
+                } else {
+                    let points = 50 * snake.segments.len() as u32;
+                    snake.score += points;
+                    tracing::info!(
+                        "[FOOD] {} ate ENEMY food (+{} points)",
+                        snake.color,
+                        points
+                    );
+                }
+
+                // Respawn the eaten food for its original owner
+                let owner_color = self
+                    .snakes
+                    .get(&fid)
+                    .map(|s| s.color.clone())
+                    .unwrap_or(food.color.clone());
+                let new_food_super = is_own_food && snake.own_food_count >= 5;
+                if let Some(new_food) = self.spawn_food(&fid, &owner_color, new_food_super) {
+                    self.foods.insert(fid, new_food);
+                }
             }
         }
 

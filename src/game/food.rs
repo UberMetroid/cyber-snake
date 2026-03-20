@@ -22,7 +22,7 @@ impl Food {
             y,
             color,
             is_super,
-            is_ring: false,
+            is_ring: rand::thread_rng().gen_bool(0.5),
             expires_at: Utc::now().timestamp_millis() + 60000,
         }
     }

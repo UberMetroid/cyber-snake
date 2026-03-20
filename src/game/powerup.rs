@@ -10,19 +10,17 @@ pub enum PowerupType {
     Ghost,
     Magnet,
     Grow,
-    Shrink,
 }
 
 impl PowerupType {
     pub fn random() -> Self {
-        match rand::thread_rng().gen_range(0..7) {
+        match rand::thread_rng().gen_range(0..6) {
             0 => Self::Speed,
             1 => Self::Shield,
             2 => Self::Bomb,
             3 => Self::Ghost,
             4 => Self::Magnet,
-            5 => Self::Grow,
-            _ => Self::Shrink,
+            _ => Self::Grow,
         }
     }
 
@@ -34,7 +32,6 @@ impl PowerupType {
             Self::Ghost => "#9900ff",
             Self::Magnet => "#ff00ff",
             Self::Grow => "#00ff00",
-            Self::Shrink => "#ff8800",
         }
     }
 }
