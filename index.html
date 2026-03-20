@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER_SNAKE.exe // MULTIPLAYER</title>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050508;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    color: #0ff;
+  }
+  #gameContainer {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #ui {
+    width: 600px;
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    font-size: 14px;
+    letter-spacing: 2px;
+  }
+  #ui .label { color: #0ff; text-shadow: 0 0 10px #0ff; }
+  #scoreboard {
+    position: absolute;
+    top: 50px;
+    right: -180px;
+    width: 160px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid #0ff;
+    padding: 10px;
+    font-size: 12px;
+  }
+  #scoreboard h3 {
+    color: #0ff;
+    text-shadow: 0 0 10px #0ff;
+    margin-bottom: 10px;
+    font-size: 14px;
+    letter-spacing: 2px;
+  }
+  .player-score {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+  }
+  .player-score .name { color: #fff; }
+  .player-score .points { color: #0ff; }
+  .player-score.dead .name { text-decoration: line-through; opacity: 0.5; }
+  .player-score.self .name { color: #0ff; }
+  canvas {
+    border: 2px solid #0ff;
+    box-shadow: 0 0 20px #0ff, inset 0 0 20px rgba(0, 255, 255, 0.1);
+  }
+  #overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #0ff;
+    text-align: center;
+    text-shadow: 0 0 10px #0ff, 0 0 30px #0ff;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 10;
+    background: rgba(5, 5, 8, 0.95);
+    padding: 40px;
+    border: 1px solid #0ff;
+    min-width: 350px;
+  }
+  #overlay h1 {
+    font-size: 28px;
+    margin-bottom: 15px;
+    letter-spacing: 4px;
+  }
+  #overlay p {
+    font-size: 14px;
+    margin-bottom: 10px;
+  }
+  #overlay .blink {
+    animation: blink 1s infinite;
+  }
+  #overlay input {
+    background: #0a0a10;
+    border: 1px solid #0ff;
+    color: #0ff;
+    padding: 8px 12px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    width: 200px;
+    margin: 10px 0;
+    text-transform: uppercase;
+  }
+  #overlay input::placeholder {
+    color: rgba(0, 255, 255, 0.4);
+    text-transform: none;
+  }
+  #overlay button {
+    background: transparent;
+    border: 1px solid #0ff;
+    color: #0ff;
+    padding: 8px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    cursor: pointer;
+    text-shadow: 0 0 10px #0ff;
+    margin: 5px;
+  }
+  #overlay button:hover {
+    background: rgba(0, 255, 255, 0.1);
+    box-shadow: 0 0 20px #0ff;
+  }
+  #overlay .error { color: #ff0044; text-shadow: 0 0 10px #ff0044; }
+  #overlay .success { color: #00ff88; text-shadow: 0 0 10px #00ff88; }
+  #overlay .warning { color: #ffff00; text-shadow: 0 0 10px #ffff00; }
+  #overlay .code-display {
+    font-size: 24px;
+    color: #ffff00;
+    text-shadow: 0 0 15px #ffff00;
+    letter-spacing: 4px;
+    margin: 15px 0;
+  }
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+  #connectionStatus {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 12px;
+    color: #ff0044;
+    text-shadow: 0 0 5px #ff0044;
+  }
+  #connectionStatus.connected { color: #00ff88; text-shadow: 0 0 5px #00ff88; }
+  #scanlines {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.1) 0px,
+      rgba(0, 0, 0, 0.1) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <div id="ui">
+    <span class="label">SCORE: <span id="myScore">0</span></span>
+    <span class="label">PLAYERS: <span id="playerCount">0</span></span>
+  </div>
+  <div id="connectionStatus">INITIALIZING...</div>
+  <canvas id="game" width="600" height="600"></canvas>
+  <div id="scanlines"></div>
+  <div id="scoreboard">
+    <h3>// SCOREBOARD</h3>
+    <div id="scores"></div>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const myScoreEl = document.getElementById('myScore');
+const playerCountEl = document.getElementById('playerCount');
+const scoresEl = document.getElementById('scores');
+const connectionStatus = document.getElementById('connectionStatus');
+
+const GRID = 20;
+const COLS = 30;
+const ROWS = 30;
+const BASE_SPEED = 8;
+
+const NEON_COLORS = [
+  '#00ff88', '#ff00ff', '#00ffff', '#ffff00',
+  '#ff8800', '#88ff00', '#ff0088', '#00ffaa'
+];
+
+let peer = null;
+let conn = null;
+let isHost = false;
+let myId = null;
+let playerName = 'PLAYER';
+let gameStarted = false;
+
+let gameState = { snakes: {}, food: null };
+let mySnake = null;
+let dirString = 'right';
+let nextDirString = 'right';
+let score = 0;
+let alive = true;
+let frameCount = 0;
+let speed = BASE_SPEED;
+let foodPos = null;
+
+const DIR_MAP = {
+  up: { x: 0, y: -1 },
+  down: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 }
+};
+const OPPOSITES = { up: 'down', down: 'up', left: 'right', right: 'left' };
+
+function showOverlay(html) {
+  const overlay = document.createElement('div');
+  overlay.id = 'overlay';
+  overlay.style.cssText = `
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #0ff;
+    text-align: center;
+    text-shadow: 0 0 10px #0ff, 0 0 30px #0ff;
+    z-index: 10;
+    background: rgba(5, 5, 8, 0.95);
+    padding: 40px;
+    border: 1px solid #0ff;
+    min-width: 350px;
+  `;
+  overlay.innerHTML = html;
+  document.getElementById('gameContainer').appendChild(overlay);
+  return overlay;
+}
+
+function removeOverlay() {
+  const old = document.getElementById('overlay');
+  if (old) old.remove();
+}
+
+function getMyColor() {
+  const used = Object.values(gameState.snakes).map(s => s.color);
+  for (const c of NEON_COLORS) {
+    if (!used.includes(c)) return c;
+  }
+  return NEON_COLORS[Math.floor(Math.random() * NEON_COLORS.length)];
+}
+
+function initSnake() {
+  const startX = Math.floor(Math.random() * (COLS - 10)) + 5;
+  const startY = Math.floor(Math.random() * (ROWS - 10)) + 5;
+  const dirs = ['up', 'down', 'left', 'right'];
+  const d = dirs[Math.floor(Math.random() * dirs.length)];
+  return {
+    segments: [{ x: startX, y: startY }],
+    dir: d,
+    nextDir: d,
+    color: getMyColor(),
+    score: 0,
+    alive: true,
+    speed: BASE_SPEED,
+    frameCount: 0
+  };
+}
+
+function spawnFood() {
+  const occupied = new Set();
+  for (const s of Object.values(gameState.snakes)) {
+    for (const seg of s.segments) occupied.add(`${seg.x},${seg.y}`);
+  }
+  let pos = null, attempts = 0;
+  while (!pos && attempts < 1000) {
+    const x = Math.floor(Math.random() * COLS);
+    const y = Math.floor(Math.random() * ROWS);
+    if (!occupied.has(`${x},${y}`)) pos = { x, y };
+    attempts++;
+  }
+  return pos;
+}
+
+function initGame() {
+  mySnake = initSnake();
+  dirString = mySnake.dir;
+  nextDirString = mySnake.dir;
+  score = 0;
+  alive = true;
+  frameCount = 0;
+  speed = BASE_SPEED;
+  foodPos = isHost ? spawnFood() : null;
+  updateScoreboard();
+}
+
+function getSnakeData() {
+  return {
+    segments: mySnake.segments,
+    dir: mySnake.dir,
+    color: mySnake.color,
+    score: mySnake.score,
+    alive: mySnake.alive,
+    speed: mySnake.speed
+  };
+}
+
+function sendState() {
+  if (conn && conn.open) {
+    conn.send({
+      type: 'state',
+      snakes: { [myId]: getSnakeData() },
+      food: foodPos
+    });
+  }
+}
+
+function receiveState(data) {
+  if (data.type === 'state') {
+    gameState.snakes = data.snakes || {};
+    gameState.food = data.food;
+    
+    if (!isHost && data.snakes[myId]) {
+      mySnake = data.snakes[myId];
+      dirString = mySnake.dir;
+      nextDirString = mySnake.dir;
+      score = mySnake.score;
+      alive = mySnake.alive;
+      speed = mySnake.speed;
+      foodPos = data.food;
+    }
+    updateScoreboard();
+  } else if (data.type === 'input') {
+    const s = gameState.snakes[data.id];
+    if (s && data.dir !== OPPOSITES[s.dir]) {
+      s.nextDir = data.dir;
+    }
+  } else if (data.type === 'respawn') {
+    if (gameState.snakes[data.id]) {
+      gameState.snakes[data.id] = { ...initSnake(), color: gameState.snakes[data.id].color };
+    }
+  }
+}
+
+function doTick() {
+  if (!alive) return;
+
+  frameCount++;
+  if (frameCount % Math.max(3, 15 - speed) !== 0) return;
+
+  dirString = nextDirString;
+  const dir = DIR_MAP[dirString];
+  const head = { ...mySnake.segments[0] };
+  head.x += dir.x;
+  head.y += dir.y;
+
+  if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+    alive = false;
+    mySnake.alive = false;
+    if (isHost) foodPos = null;
+    updateScoreboard();
+    showDeathOverlay();
+    sendState();
+    return;
+  }
+
+  for (const other of Object.values(gameState.snakes)) {
+    for (let i = 0; i < other.segments.length; i++) {
+      if (i === 0 && other.color === mySnake.color) continue;
+      if (head.x === other.segments[i].x && head.y === other.segments[i].y) {
+        alive = false;
+        mySnake.alive = false;
+        if (isHost) foodPos = null;
+        updateScoreboard();
+        showDeathOverlay();
+        sendState();
+        return;
+      }
+    }
+  }
+
+  mySnake.segments.unshift(head);
+
+  if (foodPos && head.x === foodPos.x && head.y === foodPos.y) {
+    score += 100;
+    mySnake.score = score;
+    speed = Math.min(12, BASE_SPEED + Math.floor(score / 500));
+    mySnake.speed = speed;
+    foodPos = spawnFood();
+    if (isHost) sendState();
+  } else {
+    mySnake.segments.pop();
+  }
+
+  if (isHost) {
+    gameState.snakes[myId] = getSnakeData();
+    sendState();
+  }
+}
+
+function showDeathOverlay() {
+  const overlay = showOverlay(`
+    <h1 style="color:#ff0044;text-shadow:0 0 10px #ff0044">TERMINATED</h1>
+    <p>SCORE: ${score}</p>
+    <p class="blink" style="margin-top:20px">[ PRESS SPACE TO RESPAWN ]</p>
+  `);
+  overlay.classList.add('death');
+}
+
+function updateScoreboard() {
+  const players = Object.entries(gameState.snakes).map(([id, s]) => ({
+    id, name: id === myId ? playerName : id.slice(0, 8),
+    score: s.score, color: s.color, alive: s.alive, isMe: id === myId
+  }));
+  
+  if (mySnake) {
+    players.push({
+      id: myId, name: playerName, score: mySnake.score,
+      color: mySnake.color, alive: mySnake.alive, isMe: true
+    });
+  }
+
+  players.sort((a, b) => b.score - a.score);
+  scoresEl.innerHTML = '';
+  players.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'player-score' + (p.isMe ? ' self' : '') + (!p.alive ? ' dead' : '');
+    div.innerHTML = `<span class="name" style="color:${p.color}">${p.name}</span><span class="points">${p.score}</span>`;
+    scoresEl.appendChild(div);
+  });
+
+  playerCountEl.textContent = players.length;
+  myScoreEl.textContent = score;
+}
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * GRID, 0);
+    ctx.lineTo(x * GRID, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * GRID);
+    ctx.lineTo(canvas.width, y * GRID);
+    ctx.stroke();
+  }
+}
+
+function drawFood() {
+  if (!foodPos) return;
+  const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+  ctx.shadowColor = '#ff00ff';
+  ctx.shadowBlur = 20 * pulse;
+  ctx.fillStyle = '#ff00ff';
+  ctx.beginPath();
+  ctx.arc(foodPos.x * GRID + GRID / 2, foodPos.y * GRID + GRID / 2, GRID / 2 - 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawSnakes() {
+  const all = { ...gameState.snakes };
+  if (mySnake && myId) all[myId] = { segments: mySnake.segments, color: mySnake.color, alive: mySnake.alive };
+
+  for (const [id, snake] of Object.entries(all)) {
+    const isMe = id === myId;
+    ctx.shadowColor = snake.color;
+    ctx.shadowBlur = isMe ? 20 : 10;
+    ctx.fillStyle = snake.color;
+
+    snake.segments.forEach((seg, i) => {
+      ctx.globalAlpha = snake.alive ? Math.max(0.3, 1 - i * 0.02) : 0.3;
+      ctx.fillRect(seg.x * GRID + 1, seg.y * GRID + 1, GRID - 2, GRID - 2);
+    });
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#050508';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  drawFood();
+  drawSnakes();
+  
+  if (gameStarted) doTick();
+  
+  requestAnimationFrame(draw);
+}
+
+function showLobby() {
+  removeOverlay();
+  const overlay = showOverlay(`
+    <h1>CYBER_SNAKE</h1>
+    <p>Enter your name:</p>
+    <input type="text" id="playerName" maxlength="12" placeholder="PLAYER_01">
+    <p>Room Code (or leave blank to host):</p>
+    <input type="text" id="roomCode" maxlength="6" placeholder="XXXXXX">
+    <br><br>
+    <button id="btnHost">HOST GAME</button>
+    <button id="btnJoin">JOIN GAME</button>
+  `);
+
+  document.getElementById('btnHost').onclick = () => {
+    playerName = document.getElementById('playerName').value || 'PLAYER';
+    const code = generateRoomCode();
+    startHost(code);
+  };
+
+  document.getElementById('btnJoin').onclick = () => {
+    playerName = document.getElementById('playerName').value || 'PLAYER';
+    const code = document.getElementById('roomCode').value.toUpperCase();
+    if (code.length === 6) startJoin(code);
+  };
+}
+
+function generateRoomCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let code = '';
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
+}
+
+function startHost(code) {
+  removeOverlay();
+  const overlay = showOverlay(`<h1 class="warning">CREATING ROOM...</h1>`);
+
+  isHost = true;
+  peer = new Peer('CYBER-SNAKE-' + code);
+
+  peer.on('open', (id) => {
+    myId = id;
+    connectionStatus.textContent = 'ROOM: ' + code;
+    connectionStatus.classList.add('connected');
+    overlay.innerHTML = `
+      <h1 class="success">ROOM READY</h1>
+      <p>Share this code:</p>
+      <div class="code-display">${code}</div>
+      <p class="blink">Waiting for opponent...</p>
+    `;
+    initGame();
+  });
+
+  peer.on('connection', (c) => {
+    conn = c;
+    conn.on('open', () => {
+      removeOverlay();
+      gameStarted = true;
+      draw();
+    });
+    conn.on('data', receiveState);
+  });
+
+  peer.on('error', (err) => {
+    overlay.innerHTML = `<h1 class="error">ERROR</h1><p>${err.type}</p>`;
+  });
+}
+
+function startJoin(code) {
+  removeOverlay();
+  const overlay = showOverlay(`<h1 class="warning">JOINING...</h1>`);
+
+  isHost = false;
+  peer = new Peer();
+
+  peer.on('open', () => {
+    myId = 'P-' + Math.random().toString(36).substr(2, 6);
+    conn = peer.connect('CYBER-SNAKE-' + code);
+
+    conn.on('open', () => {
+      connectionStatus.textContent = 'CONNECTED';
+      connectionStatus.classList.add('connected');
+      removeOverlay();
+      initGame();
+      gameStarted = true;
+      draw();
+    });
+
+    conn.on('data', receiveState);
+  });
+
+  peer.on('error', (err) => {
+    overlay.innerHTML = `<h1 class="error">ERROR</h1><p>${err.type}</p>`;
+  });
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    const overlay = document.getElementById('overlay');
+    if (overlay && overlay.classList.contains('death')) {
+      mySnake = initSnake();
+      dirString = mySnake.dir;
+      nextDirString = mySnake.dir;
+      alive = true;
+      foodPos = isHost ? spawnFood() : null;
+      removeOverlay();
+      if (!isHost && conn && conn.open) conn.send({ type: 'respawn', id: myId });
+      if (isHost) sendState();
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (!alive || !gameStarted) return;
+
+  let newDir = null;
+  switch (e.code) {
+    case 'ArrowUp': newDir = 'up'; break;
+    case 'ArrowDown': newDir = 'down'; break;
+    case 'ArrowLeft': newDir = 'left'; break;
+    case 'ArrowRight': newDir = 'right'; break;
+  }
+
+  if (newDir && newDir !== OPPOSITES[dirString]) {
+    nextDirString = newDir;
+    mySnake.nextDir = newDir;
+    if (conn && conn.open) conn.send({ type: 'input', id: myId, dir: newDir });
+    e.preventDefault();
+  }
+});
+
+peer = new Peer();
+peer.on('open', () => showLobby());
+peer.on('error', () => showLobby());
+</script>
+</body>
+</html>

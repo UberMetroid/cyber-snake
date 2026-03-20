@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER_SNAKE.exe</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050508;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+  }
+  #gameContainer {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #ui {
+    width: 600px;
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    color: #0ff;
+    font-size: 18px;
+    text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+    letter-spacing: 2px;
+  }
+  #score::before { content: "SCORE: "; }
+  #highScore::before { content: "HI-SCORE: "; }
+  canvas {
+    border: 2px solid #0ff;
+    box-shadow: 0 0 20px #0ff, inset 0 0 20px rgba(0,255,255,0.1);
+  }
+  #overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #0ff;
+    text-align: center;
+    text-shadow: 0 0 10px #0ff, 0 0 30px #0ff;
+    display: none;
+    z-index: 10;
+  }
+  #overlay h1 {
+    font-size: 48px;
+    margin-bottom: 20px;
+    letter-spacing: 4px;
+  }
+  #overlay p {
+    font-size: 20px;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+  #scanlines {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.1) 0px,
+      rgba(0, 0, 0, 0.1) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <div id="ui">
+    <div id="score">0</div>
+    <div id="highScore">0</div>
+  </div>
+  <canvas id="game" width="600" height="600"></canvas>
+  <div id="scanlines"></div>
+  <div id="overlay">
+    <h1>GAME_OVER</h1>
+    <p>[ PRESS SPACE TO REBOOT ]</p>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const scoreEl = document.getElementById('score');
+const highScoreEl = document.getElementById('highScore');
+const overlay = document.getElementById('overlay');
+
+const GRID = 20;
+const COLS = canvas.width / GRID;
+const ROWS = canvas.height / GRID;
+
+const COLORS = {
+  bg: '#050508',
+  grid: 'rgba(0, 255, 255, 0.05)',
+  snake: '#00ff88',
+  snakeGlow: '#00ff88',
+  food: '#ff00ff',
+  foodGlow: '#ff00ff',
+  portal: '#ff8800',
+  portalGlow: '#ff8800'
+};
+
+let snake, dir, nextDir, food, portals, score, highScore, gameOver, speed, frameCount;
+
+function init() {
+  snake = [{ x: 10, y: 15 }];
+  dir = { x: 1, y: 0 };
+  nextDir = { x: 1, y: 0 };
+  score = 0;
+  speed = 8;
+  frameCount = 0;
+  gameOver = false;
+  overlay.style.display = 'none';
+  highScore = parseInt(localStorage.getItem('cyberSnakeHi') || '0');
+  highScoreEl.textContent = highScore;
+  scoreEl.textContent = score;
+  spawnFood();
+  spawnPortals();
+}
+
+function spawnFood() {
+  let valid = false;
+  while (!valid) {
+    food = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+    valid = !snake.some(s => s.x === food.x && s.y === food.y);
+  }
+}
+
+function spawnPortals() {
+  portals = [];
+  const used = new Set(snake.map(s => `${s.x},${s.y}`));
+  used.add(`${food.x},${food.y}`);
+
+  while (portals.length < 4) {
+    const p = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+    if (!used.has(`${p.x},${p.y}`)) {
+      portals.push(p);
+      used.add(`${p.x},${p.y}`);
+    }
+  }
+}
+
+function update() {
+  if (gameOver) return;
+
+  frameCount++;
+  if (frameCount % Math.max(3, 12 - speed) !== 0) return;
+
+  dir = { ...nextDir };
+
+  const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+  if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) {
+    endGame(); return;
+  }
+
+  if (snake.some(s => s.x === head.x && s.y === head.y)) {
+    endGame(); return;
+  }
+
+  for (let i = 0; i < portals.length; i += 2) {
+    if (head.x === portals[i].x && head.y === portals[i].y) {
+      head.x = portals[i + 1].x;
+      head.y = portals[i + 1].y;
+      break;
+    } else if (head.x === portals[i + 1].x && head.y === portals[i + 1].y) {
+      head.x = portals[i].x;
+      head.y = portals[i].y;
+      break;
+    }
+  }
+
+  snake.unshift(head);
+
+  if (head.x === food.x && head.y === food.y) {
+    score += 100;
+    scoreEl.textContent = score;
+    if (score > highScore) {
+      highScore = score;
+      highScoreEl.textContent = highScore;
+      localStorage.setItem('cyberSnakeHi', highScore);
+    }
+    speed = Math.min(12, 8 + Math.floor(score / 500));
+    spawnFood();
+  } else {
+    snake.pop();
+  }
+}
+
+function endGame() {
+  gameOver = true;
+  overlay.style.display = 'block';
+}
+
+function drawGrid() {
+  ctx.strokeStyle = COLORS.grid;
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * GRID, 0);
+    ctx.lineTo(x * GRID, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * GRID);
+    ctx.lineTo(canvas.width, y * GRID);
+    ctx.stroke();
+  }
+}
+
+function drawSnake() {
+  ctx.shadowColor = COLORS.snakeGlow;
+  ctx.shadowBlur = 15;
+  ctx.fillStyle = COLORS.snake;
+  snake.forEach((seg, i) => {
+    const pulse = 1 - i * 0.02;
+    ctx.globalAlpha = Math.max(0.3, pulse);
+    ctx.fillRect(seg.x * GRID + 1, seg.y * GRID + 1, GRID - 2, GRID - 2);
+  });
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function drawFood() {
+  const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+  ctx.shadowColor = COLORS.foodGlow;
+  ctx.shadowBlur = 20 * pulse;
+  ctx.fillStyle = COLORS.food;
+  ctx.beginPath();
+  ctx.arc(food.x * GRID + GRID / 2, food.y * GRID + GRID / 2, GRID / 2 - 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawPortals() {
+  const time = Date.now() / 500;
+  portals.forEach((p, i) => {
+    const hue = i % 2 === 0 ? 30 : 45;
+    const r = i % 2 === 0 ? 255 : 136;
+    const g = i % 2 === 0 ? 136 : 50;
+    const b = 0;
+    ctx.shadowColor = `rgb(${r},${g},${b})`;
+    ctx.shadowBlur = 15 + Math.sin(time + i) * 5;
+    ctx.strokeStyle = `rgb(${r},${g},${b})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(p.x * GRID + GRID / 2, p.y * GRID + GRID / 2, GRID / 2 - 2, time + i, time + i + Math.PI * 1.5);
+    ctx.stroke();
+  });
+  ctx.shadowBlur = 0;
+}
+
+function draw() {
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  drawPortals();
+  drawFood();
+  drawSnake();
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener('keydown', e => {
+  if (gameOver && e.code === 'Space') { init(); return; }
+  switch (e.code) {
+    case 'ArrowUp':    if (dir.y !== 1)  nextDir = { x: 0, y: -1 }; break;
+    case 'ArrowDown':  if (dir.y !== -1) nextDir = { x: 0, y: 1 }; break;
+    case 'ArrowLeft':  if (dir.x !== 1)  nextDir = { x: -1, y: 0 }; break;
+    case 'ArrowRight': if (dir.x !== -1) nextDir = { x: 1, y: 0 }; break;
+  }
+});
+
+init();
+loop();
+</script>
+</body>
+</html>

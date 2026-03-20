@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DATA_DECRYPT.exe</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #03030a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+  }
+  #container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+  }
+  #header {
+    width: 700px;
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    color: #0ff;
+    font-size: 15px;
+    text-shadow: 0 0 10px #0ff;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+  #main {
+    display: flex;
+    gap: 25px;
+    align-items: flex-start;
+  }
+  #side {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    color: #0ff;
+    text-shadow: 0 0 8px #0ff;
+    font-size: 13px;
+    letter-spacing: 1px;
+    min-width: 100px;
+  }
+  #side .label { opacity: 0.55; font-size: 9px; margin-bottom: 2px; }
+  #side .value { font-size: 18px; }
+  #nextCanvas, #holdCanvas {
+    border: 1px solid rgba(0,255,255,0.25);
+    background: rgba(0,0,0,0.5);
+  }
+  #tiltMeter {
+    width: 100px; height: 7px;
+    border: 1px solid rgba(0,255,255,0.35);
+    background: rgba(0,255,255,0.04);
+    position: relative;
+  }
+  #tiltBar {
+    position: absolute; top: 0; left: 50%;
+    width: 4px; height: 100%;
+    background: #0ff;
+    box-shadow: 0 0 5px #0ff;
+    transform: translateX(-50%);
+  }
+  #controls {
+    font-size: 9px; opacity: 0.35; line-height: 1.8;
+    margin-top: 8px;
+  }
+  #overlay {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #0ff;
+    text-align: center;
+    text-shadow: 0 0 20px #0ff, 0 0 50px #0ff;
+    display: none;
+    z-index: 20;
+    background: rgba(3,3,10,0.95);
+    padding: 45px 65px;
+    border: 2px solid #0ff;
+    box-shadow: 0 0 40px rgba(0,255,255,0.25);
+  }
+  #overlay h1 {
+    font-size: 38px; margin-bottom: 12px; letter-spacing: 5px;
+  }
+  #overlay .sub { font-size: 15px; opacity: 0.65; margin-bottom: 22px; }
+  #overlay p { font-size: 15px; animation: blink 1s infinite; }
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+  #scanlines {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg, rgba(0,0,0,0.05) 0px, rgba(0,0,0,0.05) 1px,
+      transparent 1px, transparent 2px
+    );
+    z-index: 100;
+  }
+  #glitch {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 99;
+    opacity: 0;
+    background: linear-gradient(90deg, rgba(255,0,0,0.06) 0%, rgba(0,255,255,0.06) 50%, rgba(255,0,255,0.06) 100%);
+    transition: opacity 0.05s;
+  }
+  #glitch.active { opacity: 1; }
+</style>
+</head>
+<body>
+<div id="glitch"></div>
+<div id="scanlines"></div>
+<div id="container">
+  <div id="header">
+    <span id="score">SCORE: 0</span>
+    <span id="level">LEVEL: 1</span>
+    <span id="hi">HI-SCORE: 0</span>
+  </div>
+  <div id="main">
+    <div id="side">
+      <div>
+        <div class="label">NEXT</div>
+        <canvas id="nextCanvas" width=80 height=160></canvas>
+      </div>
+      <div>
+        <div class="label">HOLD</div>
+        <canvas id="holdCanvas" width=80 height=80></canvas>
+      </div>
+      <div>
+        <div class="label">BALANCE</div>
+        <div id="tiltMeter"><div id="tiltBar"></div></div>
+      </div>
+      <div>
+        <div class="label">LINES</div>
+        <div class="value" id="lines">0</div>
+      </div>
+      <div id="controls">
+        [LEFT/RIGHT] MOVE<br>[UP] ROTATE<br>[DOWN] DROP<br>[SPACE] HARD DROP<br>[C] HOLD
+      </div>
+    </div>
+    <canvas id="game" width=650 height=620></canvas>
+  </div>
+  <div id="overlay">
+    <h1>BUFFER_OVERFLOW</h1>
+    <div class="sub" id="finalScore">SCORE: 0</div>
+    <p>[ PRESS SPACE TO REBOOT ]</p>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const nextCanvas = document.getElementById('nextCanvas');
+const nextCtx = nextCanvas.getContext('2d');
+const holdCanvas = document.getElementById('holdCanvas');
+const holdCtx = holdCanvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const glitch = document.getElementById('glitch');
+const tiltBar = document.getElementById('tiltBar');
+
+const CELL = 22;
+const FACE_SIZE = 10;
+const PLAY_HEIGHT = 30;
+const PLAY_WIDTH = 16;
+
+const CC = {
+  bg: '#03030a',
+  grid: 'rgba(0, 255, 255, 0.05)',
+  I: '#00ffff',
+  O: '#ffff00',
+  T: '#ff00ff',
+  S: '#00ff44',
+  Z: '#ff2244',
+  J: '#4488ff',
+  L: '#ff8800'
+};
+
+const SHAPES = {
+  I: [[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],
+  O: [[1,1],[1,1]],
+  T: [[0,1,0],[1,1,1],[0,0,0]],
+  S: [[0,1,1],[1,1,0],[0,0,0]],
+  Z: [[1,1,0],[0,1,1],[0,0,0]],
+  J: [[1,0,0],[1,1,1],[0,0,0]],
+  L: [[0,0,1],[1,1,1],[0,0,0]]
+};
+
+const TYPES = Object.keys(SHAPES);
+const TILT_THRESHOLD = 0.6;
+
+const FT = { TOP: 0, FRONT: 1, RIGHT: 2, BACK: 3, LEFT: 4, BOTTOM: 5 };
+
+let faces = [];
+let playArea = [];
+let current, next, hold, holdUsed;
+let score, level, lines, highScore, gameOver;
+let tiltX, tiltZ, rollTimer, rollDur, rolling, rollAxis, rollDir;
+let dropTimer, dropInterval;
+let lastTime = 0;
+
+function init() {
+  faces = [];
+  for (let i = 0; i < 6; i++) faces.push(Array(FACE_SIZE).fill(null).map(() => Array(FACE_SIZE).fill(null)));
+  playArea = Array(PLAY_HEIGHT).fill(null).map(() => Array(PLAY_WIDTH).fill(null));
+  current = null; next = null; hold = null;
+  holdUsed = false;
+  score = 0; level = 1; lines = 0;
+  tiltX = 0; tiltZ = 0;
+  rollTimer = 0; rollDur = 550;
+  rolling = false; rollAxis = null; rollDir = 0;
+  gameOver = false;
+  dropInterval = 1000; dropTimer = 0;
+  overlay.style.display = 'none';
+  highScore = parseInt(localStorage.getItem('tetrisCubeHi') || '0');
+  document.getElementById('hi').textContent = `HI-SCORE: ${highScore}`;
+  next = randPiece();
+  spawnPiece();
+  updateUI();
+}
+
+function randPiece() {
+  return { type: TYPES[Math.floor(Math.random() * TYPES.length)], rot: 0 };
+}
+
+function getM(type, rot) {
+  let m = SHAPES[type].map(r => [...r]);
+  for (let i = 0; i < rot; i++) m = m[0].map((_, ci) => m.map(row => row[ci]).reverse());
+  return m;
+}
+
+function spawnPiece() {
+  current = { ...next, x: Math.floor(PLAY_WIDTH / 2) - 2, y: 0 };
+  next = randPiece();
+  holdUsed = false;
+  if (checkCol(current.x, current.y, current.type, current.rot)) endGame();
+  drawNext();
+}
+
+function checkCol(x, y, type, rot) {
+  const m = getM(type, rot);
+  for (let r = 0; r < m.length; r++) {
+    for (let c = 0; c < m[r].length; c++) {
+      if (m[r][c]) {
+        const nx = x + c, ny = y + r;
+        if (nx < 0 || nx >= PLAY_WIDTH || ny >= PLAY_HEIGHT) return true;
+        if (ny >= 0 && playArea[ny][nx]) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function lockPiece() {
+  const m = getM(current.type, current.rot);
+  for (let r = 0; r < m.length; r++) {
+    for (let c = 0; c < m[r].length; c++) {
+      if (m[r][c]) {
+        const ny = current.y + r, nx = current.x + c;
+        if (ny >= 0) playArea[ny][nx] = current.type;
+      }
+    }
+  }
+  clearLines();
+  dumpToCube();
+  if (!gameOver) spawnPiece();
+}
+
+function dumpToCube() {
+  for (let r = 0; r < PLAY_HEIGHT; r++) {
+    for (let c = 0; c < PLAY_WIDTH; c++) {
+      if (playArea[r][c]) {
+        const fc = Math.floor(c * FACE_SIZE / PLAY_WIDTH);
+        const fr = Math.floor(r * FACE_SIZE / PLAY_HEIGHT);
+        if (!faces[FT.TOP][fr][fc]) faces[FT.TOP][fr][fc] = playArea[r][c];
+        playArea[r][c] = null;
+      }
+    }
+  }
+  measureTilt();
+}
+
+function measureTilt() {
+  let lW = 0, rW = 0, fW = 0, bW = 0;
+  for (let r = 0; r < FACE_SIZE; r++) {
+    for (let c = 0; c < FACE_SIZE / 2; c++) {
+      if (faces[FT.TOP][r][c]) lW++;
+      if (faces[FT.TOP][r][FACE_SIZE - 1 - c]) rW++;
+    }
+  }
+  for (let c = 0; c < FACE_SIZE; c++) {
+    for (let r = 0; r < FACE_SIZE / 2; r++) {
+      if (faces[FT.TOP][r][c]) fW++;
+      if (faces[FT.TOP][FACE_SIZE - 1 - r][c]) bW++;
+    }
+  }
+  tiltX += (rW - lW) * 0.008;
+  tiltZ += (bW - fW) * 0.008;
+}
+
+function clearLines() {
+  let cl = 0;
+  for (let r = PLAY_HEIGHT - 1; r >= 0; r--) {
+    if (playArea[r].every(c => c !== null)) {
+      playArea.splice(r, 1);
+      playArea.unshift(Array(PLAY_WIDTH).fill(null));
+      cl++;
+      r++;
+    }
+  }
+  if (cl > 0) {
+    triggerGlitch();
+    const pts = [0, 100, 300, 500, 800][cl] * level;
+    score += pts;
+    lines += cl;
+    level = Math.floor(lines / 10) + 1;
+    dropInterval = Math.max(100, 1000 - (level - 1) * 75);
+    if (score > highScore) {
+      highScore = score;
+      localStorage.setItem('tetrisCubeHi', highScore);
+    }
+    updateUI();
+  }
+}
+
+function triggerRoll() {
+  const prevTop = faces[FT.TOP].map(r => [...r]);
+  let heavyAxis, heavyDir;
+
+  if (Math.abs(tiltX) >= Math.abs(tiltZ)) {
+    heavyAxis = 'h';
+    heavyDir = tiltX > 0 ? 1 : -1;
+  } else {
+    heavyAxis = 'v';
+    heavyDir = tiltZ > 0 ? 1 : -1;
+  }
+
+  rolling = true;
+  rollAxis = heavyAxis;
+  rollDir = heavyDir;
+  rollTimer = 0;
+  triggerGlitch();
+
+  if (heavyAxis === 'h') {
+    if (heavyDir > 0) {
+      faces[FT.FRONT] = prevTop;
+      faces[FT.TOP] = faces[FT.LEFT].map(r => [...r]);
+      faces[FT.BACK] = faces[FT.RIGHT].map(r => [...r]);
+      faces[FT.LEFT] = faces[FT.BOTTOM].map(r => [...r]);
+      faces[FT.RIGHT] = Array(FACE_SIZE).fill(null).map(() => Array(FACE_SIZE).fill(null));
+    } else {
+      faces[FT.FRONT] = prevTop;
+      faces[FT.TOP] = faces[FT.RIGHT].map(r => [...r]);
+      faces[FT.BACK] = faces[FT.LEFT].map(r => [...r]);
+      faces[FT.RIGHT] = faces[FT.BOTTOM].map(r => [...r]);
+      faces[FT.LEFT] = Array(FACE_SIZE).fill(null).map(() => Array(FACE_SIZE).fill(null));
+    }
+  } else {
+    if (heavyDir > 0) {
+      faces[FT.RIGHT] = prevTop;
+      faces[FT.TOP] = faces[FT.FRONT].map(r => [...r]);
+      faces[FT.LEFT] = faces[FT.BACK].map(r => [...r]);
+      faces[FT.FRONT] = faces[FT.BOTTOM].map(r => [...r]);
+      faces[FT.BACK] = Array(FACE_SIZE).fill(null).map(() => Array(FACE_SIZE).fill(null));
+    } else {
+      faces[FT.LEFT] = prevTop;
+      faces[FT.TOP] = faces[FT.BACK].map(r => [...r]);
+      faces[FT.RIGHT] = faces[FT.FRONT].map(r => [...r]);
+      faces[FT.BACK] = faces[FT.BOTTOM].map(r => [...r]);
+      faces[FT.FRONT] = Array(FACE_SIZE).fill(null).map(() => Array(FACE_SIZE).fill(null));
+    }
+  }
+
+  tiltX = 0;
+  tiltZ = 0;
+}
+
+function triggerGlitch() {
+  glitch.classList.add('active');
+  setTimeout(() => glitch.classList.remove('active'), 100);
+}
+
+function updateUI() {
+  document.getElementById('score').textContent = `SCORE: ${score}`;
+  document.getElementById('level').textContent = `LEVEL: ${level}`;
+  document.getElementById('hi').textContent = `HI-SCORE: ${highScore}`;
+  document.getElementById('lines').textContent = lines;
+}
+
+function move(dir) {
+  if (!checkCol(current.x + dir, current.y, current.type, current.rot)) current.x += dir;
+}
+
+function rotate(dir) {
+  const nr = (current.rot + dir + 4) % 4;
+  if (!checkCol(current.x, current.y, current.type, nr)) { current.rot = nr; return; }
+  if (!checkCol(current.x + 1, current.y, current.type, nr)) { current.x++; current.rot = nr; return; }
+  if (!checkCol(current.x - 1, current.y, current.type, nr)) { current.x--; current.rot = nr; return; }
+}
+
+function softDrop() {
+  if (!checkCol(current.x, current.y + 1, current.type, current.rot)) { current.y++; score += 1; updateUI(); }
+  else lockPiece();
+}
+
+function hardDrop() {
+  while (!checkCol(current.x, current.y + 1, current.type, current.rot)) { current.y++; score += 2; }
+  updateUI();
+  lockPiece();
+}
+
+function doHold() {
+  if (holdUsed) return;
+  holdUsed = true;
+  const t = { type: current.type, rot: 0 };
+  if (hold) current = { ...hold, x: Math.floor(PLAY_WIDTH / 2) - 2, y: 0 };
+  else spawnPiece();
+  hold = t;
+  drawHold();
+}
+
+function getGhostY() {
+  let gy = current.y;
+  while (!checkCol(current.x, gy + 1, current.type, current.rot)) gy++;
+  return gy;
+}
+
+function easeInOut(t) { return t < 0.5 ? 2*t*t : -1+(4-2*t)*t; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+function drawScene(rollT) {
+  const cw = canvas.width, ch = canvas.height;
+  ctx.fillStyle = CC.bg;
+  ctx.fillRect(0, 0, cw, ch);
+
+  const cubeCX = cw / 2;
+  const cubeCY = ch - 130;
+  const faceW = CELL * FACE_SIZE;
+  const faceH = CELL * FACE_SIZE;
+
+  const tiltDisplayX = rolling && rollAxis === 'h' ? rollDir * rollT * Math.PI / 2 : 0;
+  const tiltDisplayZ = rolling && rollAxis === 'v' ? rollDir * rollT * Math.PI / 2 : 0;
+
+  const cosX = Math.cos(tiltDisplayX);
+  const sinX = Math.sin(tiltDisplayX);
+  const cosZ = Math.cos(tiltDisplayZ);
+  const sinZ = Math.sin(tiltDisplayZ);
+
+  const v3 = (u, v) => {
+    let wx = u - faceW / 2, wy = v - faceH / 2, wz = -faceW * 0.5;
+    let wx2 = wx * cosZ - wy * sinZ;
+    let wy2 = wx * sinZ + wy * cosZ;
+    let wx3 = wx2 * cosX - wz * sinX;
+    let wz3 = wx2 * sinX + wz * cosX;
+    let wy3 = wy2;
+    const f = 1.4;
+    return { sx: cubeCX + wx3 * f, sy: cubeCY + wy3 * f - wz3 * 0.35 };
+  };
+
+  const top00 = v3(0, 0);
+  const top10 = v3(faceW, 0);
+  const top11 = v3(faceW, faceH);
+  const top01 = v3(0, faceH);
+  const front00 = v3(0, faceH);
+  const front10 = v3(faceW, faceH);
+  const front01 = v3(0, faceH * 2);
+  const front11 = v3(faceW, faceH * 2);
+  const right00 = v3(faceW, 0);
+  const right10 = v3(faceW * 2, 0);
+  const right11 = v3(faceW * 2, faceH);
+  const right01 = v3(faceW, faceH);
+
+  ctx.beginPath();
+  ctx.moveTo(top00.sx, top00.sy);
+  ctx.lineTo(top10.sx, top10.sy);
+  ctx.lineTo(top11.sx, top11.sy);
+  ctx.lineTo(top01.sx, top01.sy);
+  ctx.closePath();
+  ctx.fillStyle = '#0a0a14';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,255,255,0.12)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  const drawGrid = (p00, p10, p11, p01) => {
+    ctx.strokeStyle = CC.grid;
+    ctx.lineWidth = 0.5;
+    for (let i = 0; i <= FACE_SIZE; i++) {
+      const u = i / FACE_SIZE;
+      const x1 = lerp(p00.sx, p10.sx, u), y1 = lerp(p00.sy, p10.sy, u);
+      const x2 = lerp(p01.sx, p11.sx, u), y2 = lerp(p01.sy, p11.sy, u);
+      ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      const v = i / FACE_SIZE;
+      const x3 = lerp(p00.sx, p01.sx, v), y3 = lerp(p00.sy, p01.sy, v);
+      const x4 = lerp(p10.sx, p11.sx, v), y4 = lerp(p10.sy, p11.sy, v);
+      ctx.beginPath(); ctx.moveTo(x3, y3); ctx.lineTo(x4, y4); ctx.stroke();
+    }
+  };
+  drawGrid(top00, top10, top11, top01);
+
+  const getCorners = (p00, p10, p11, p01) => {
+    const c = [];
+    for (let fr = 0; fr <= FACE_SIZE; fr++) {
+      c[fr] = [];
+      for (let fc = 0; fc <= FACE_SIZE; fc++) {
+        const u = fc / FACE_SIZE, v = fr / FACE_SIZE;
+        c[fr][fc] = {
+          sx: lerp(lerp(p00.sx, p10.sx, u), lerp(p01.sx, p11.sx, u), v),
+          sy: lerp(lerp(p00.sy, p10.sy, u), lerp(p01.sy, p11.sy, u), v)
+        };
+      }
+    }
+    return c;
+  };
+
+  const topCorners = getCorners(top00, top10, top11, top01);
+  const frontCorners = getCorners(front00, front10, front11, front01);
+  const rightCorners = getCorners(right00, right10, right11, right01);
+
+  const drawCells = (corners, faceData, alpha = 0.85) => {
+    for (let fr = 0; fr < FACE_SIZE; fr++) {
+      for (let fc = 0; fc < FACE_SIZE; fc++) {
+        if (faceData[fr][fc]) {
+          const pt = [corners[fr][fc], corners[fr][fc+1], corners[fr+1][fc+1], corners[fr+1][fc]];
+          const color = CC[faceData[fr][fc]];
+          ctx.shadowColor = color;
+          ctx.shadowBlur = 7;
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(pt[0].sx, pt[0].sy);
+          ctx.lineTo(pt[1].sx, pt[1].sy);
+          ctx.lineTo(pt[2].sx, pt[2].sy);
+          ctx.lineTo(pt[3].sx, pt[3].sy);
+          ctx.closePath();
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.shadowBlur = 0;
+        }
+      }
+    }
+  };
+
+  drawCells(topCorners, faces[FT.TOP]);
+  drawCells(frontCorners, faces[FT.FRONT], 0.75);
+  drawCells(rightCorners, faces[FT.RIGHT], 0.75);
+
+  if (!gameOver && !rolling && current) {
+    const m = getM(current.type, current.rot);
+    const ghostY = getGhostY();
+
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < m[r].length; c++) {
+        if (m[r][c]) {
+          const gc = current.x + c, gr = ghostY + r;
+          if (gr >= 0 && gr < PLAY_HEIGHT && gc >= 0 && gc < PLAY_WIDTH) {
+            const fc = Math.floor(gc * FACE_SIZE / PLAY_WIDTH);
+            const fr = Math.floor(gr * FACE_SIZE / PLAY_HEIGHT);
+            const pt = [topCorners[fr][fc], topCorners[fr][fc+1], topCorners[fr+1][fc+1], topCorners[fr+1][fc]];
+            const color = CC[current.type];
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 6;
+            ctx.globalAlpha = 0.18;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(pt[0].sx, pt[0].sy);
+            ctx.lineTo(pt[1].sx, pt[1].sy);
+            ctx.lineTo(pt[2].sx, pt[2].sy);
+            ctx.lineTo(pt[3].sx, pt[3].sy);
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.shadowBlur = 0;
+          }
+        }
+      }
+    }
+
+    for (let r = 0; r < m.length; r++) {
+      for (let c = 0; c < m[r].length; c++) {
+        if (m[r][c]) {
+          const gc = current.x + c, gr = current.y + r;
+          if (gr >= 0 && gr < PLAY_HEIGHT && gc >= 0 && gc < PLAY_WIDTH) {
+            const fc = Math.floor(gc * FACE_SIZE / PLAY_WIDTH);
+            const fr = Math.floor(gr * FACE_SIZE / PLAY_HEIGHT);
+            const pt = [topCorners[fr][fc], topCorners[fr][fc+1], topCorners[fr+1][fc+1], topCorners[fr+1][fc]];
+            const color = CC[current.type];
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 12;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(pt[0].sx, pt[0].sy);
+            ctx.lineTo(pt[1].sx, pt[1].sy);
+            ctx.lineTo(pt[2].sx, pt[2].sy);
+            ctx.lineTo(pt[3].sx, pt[3].sy);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+          }
+        }
+      }
+    }
+  }
+
+  ctx.strokeStyle = 'rgba(0,255,255,0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(top00.sx, top00.sy);
+  ctx.lineTo(top10.sx, top10.sy);
+  ctx.lineTo(top11.sx, top11.sy);
+  ctx.lineTo(top01.sx, top01.sy);
+  ctx.closePath();
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(0,255,255,0.15)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(front00.sx, front00.sy); ctx.lineTo(front10.sx, front10.sy);
+  ctx.lineTo(front11.sx, front11.sy); ctx.lineTo(front01.sx, front01.sy);
+  ctx.closePath(); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(right00.sx, right00.sy); ctx.lineTo(right10.sx, right10.sy);
+  ctx.lineTo(right11.sx, right11.sy); ctx.lineTo(right01.sx, right01.sy);
+  ctx.closePath(); ctx.stroke();
+
+  if (!rolling) {
+    const tiltPct = 50 + (tiltX / TILT_THRESHOLD) * 45;
+    const tiltPctZ = 50 + (tiltZ / TILT_THRESHOLD) * 45;
+    const dominant = Math.abs(tiltX) > Math.abs(tiltZ) ? tiltPct : tiltPctZ;
+    tiltBar.style.left = `${Math.max(5, Math.min(95, dominant))}%`;
+    const danger = Math.abs(tiltX) > TILT_THRESHOLD * 0.6 || Math.abs(tiltZ) > TILT_THRESHOLD * 0.6;
+    tiltBar.style.background = danger ? '#ff4400' : '#0ff';
+    tiltBar.style.boxShadow = danger ? '0 0 8px #ff4400' : '0 0 5px #0ff';
+  }
+
+  ctx.shadowColor = '#0ff';
+  ctx.shadowBlur = 15;
+  ctx.strokeStyle = 'rgba(0,255,255,0.15)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(cubeCX, cubeCY + faceH * 0.4, faceW * 0.55, faceH * 0.12, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+}
+
+function drawPreview(ctx, canvasEl, piece, cSize = 13) {
+  ctx.fillStyle = CC.bg;
+  ctx.fillRect(0, 0, canvasEl.width, canvasEl.height);
+  if (!piece) return;
+  const m = getM(piece.type, piece.rot);
+  const ox = (canvasEl.width - m[0].length * cSize) / 2;
+  const oy = (canvasEl.height - m.length * cSize) / 2;
+  for (let r = 0; r < m.length; r++) {
+    for (let c = 0; c < m[r].length; c++) {
+      if (m[r][c]) {
+        const color = CC[piece.type];
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 5;
+        ctx.fillStyle = color;
+        ctx.fillRect(ox + c * cSize + 1, oy + r * cSize + 1, cSize - 2, cSize - 2);
+        ctx.shadowBlur = 0;
+      }
+    }
+  }
+}
+
+function drawNext() { drawPreview(nextCtx, nextCanvas, next, 13); }
+function drawHold() { drawPreview(holdCtx, holdCanvas, hold, 12); }
+
+function endGame() {
+  gameOver = true;
+  document.getElementById('finalScore').textContent = `SCORE: ${score}`;
+  overlay.style.display = 'block';
+}
+
+function loop(time) {
+  if (lastTime === 0) lastTime = time;
+  const dt = time - lastTime;
+  lastTime = time;
+
+  if (!gameOver && !rolling) {
+    tiltX *= 0.992;
+    tiltZ *= 0.992;
+    if (Math.abs(tiltX) > TILT_THRESHOLD || Math.abs(tiltZ) > TILT_THRESHOLD) triggerRoll();
+
+    dropTimer += dt;
+    if (dropTimer >= dropInterval) {
+      dropTimer = 0;
+      if (!checkCol(current.x, current.y + 1, current.type, current.rot)) current.y++;
+      else lockPiece();
+    }
+  }
+
+  let rollT = 0;
+  if (rolling) {
+    rollTimer += dt;
+    rollT = Math.min(1, easeInOut(rollTimer / rollDur));
+    if (rollTimer >= rollDur) { rolling = false; rollT = 0; }
+  }
+
+  drawScene(rollT);
+  requestAnimationFrame(loop);
+}
+
+document.addEventListener('keydown', e => {
+  if (gameOver) { if (e.code === 'Space') init(); return; }
+  if (rolling) return;
+  switch (e.code) {
+    case 'ArrowLeft': move(-1); break;
+    case 'ArrowRight': move(1); break;
+    case 'ArrowUp': rotate(1); break;
+    case 'ArrowDown': softDrop(); break;
+    case 'Space': hardDrop(); break;
+    case 'KeyC': doHold(); break;
+  }
+});
+
+init();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

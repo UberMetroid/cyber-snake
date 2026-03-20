@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER_SNAKE.exe // MULTIPLAYER</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050508;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    color: #0ff;
+  }
+  #gameContainer {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #ui {
+    width: 600px;
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    font-size: 14px;
+    letter-spacing: 2px;
+  }
+  #ui .label { color: #0ff; text-shadow: 0 0 10px #0ff; }
+  #scoreboard {
+    position: absolute;
+    top: 50px;
+    right: -180px;
+    width: 160px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid #0ff;
+    padding: 10px;
+    font-size: 12px;
+  }
+  #scoreboard h3 {
+    color: #0ff;
+    text-shadow: 0 0 10px #0ff;
+    margin-bottom: 10px;
+    font-size: 14px;
+    letter-spacing: 2px;
+  }
+  .player-score {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+  }
+  .player-score .name { color: #fff; }
+  .player-score .points { color: #0ff; }
+  .player-score.dead .name { text-decoration: line-through; opacity: 0.5; }
+  .player-score.self .name { color: #0ff; }
+  canvas {
+    border: 2px solid #0ff;
+    box-shadow: 0 0 20px #0ff, inset 0 0 20px rgba(0, 255, 255, 0.1);
+  }
+  #overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #0ff;
+    text-align: center;
+    text-shadow: 0 0 10px #0ff, 0 0 30px #0ff;
+    display: none;
+    z-index: 10;
+  }
+  #overlay h1 {
+    font-size: 36px;
+    margin-bottom: 15px;
+    letter-spacing: 4px;
+  }
+  #overlay p {
+    font-size: 16px;
+    animation: blink 1s infinite;
+  }
+  #overlay.death h1 { color: #ff0044; text-shadow: 0 0 10px #ff0044, 0 0 30px #ff0044; }
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+  #connectionStatus {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    font-size: 12px;
+    color: #ff0044;
+    text-shadow: 0 0 5px #ff0044;
+  }
+  #connectionStatus.connected { color: #00ff88; text-shadow: 0 0 5px #00ff88; }
+  #scanlines {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.1) 0px,
+      rgba(0, 0, 0, 0.1) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <div id="ui">
+    <span class="label">SCORE: <span id="myScore">0</span></span>
+    <span class="label">PLAYERS: <span id="playerCount">0</span></span>
+  </div>
+  <div id="connectionStatus">CONNECTING...</div>
+  <canvas id="game" width="600" height="600"></canvas>
+  <div id="scanlines"></div>
+  <div id="overlay">
+    <h1>GAME_OVER</h1>
+    <p>[ PRESS SPACE TO RESPAWN ]</p>
+  </div>
+  <div id="scoreboard">
+    <h3>// SCOREBOARD</h3>
+    <div id="scores"></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const myScoreEl = document.getElementById('myScore');
+const playerCountEl = document.getElementById('playerCount');
+const scoresEl = document.getElementById('scores');
+const connectionStatus = document.getElementById('connectionStatus');
+
+const GRID = 20;
+const COLS = 30;
+const ROWS = 30;
+
+let socket = null;
+let myId = null;
+let gameState = { players: [], food: null };
+let lastState = null;
+
+const COLORS = {
+  bg: '#050508',
+  grid: 'rgba(0, 255, 255, 0.05)',
+  food: '#ff00ff',
+  foodGlow: '#ff00ff'
+};
+
+function connect() {
+  socket = io();
+
+  socket.on('connect', () => {
+    connectionStatus.textContent = 'CONNECTED';
+    connectionStatus.classList.add('connected');
+  });
+
+  socket.on('disconnect', () => {
+    connectionStatus.textContent = 'DISCONNECTED';
+    connectionStatus.classList.remove('connected');
+  });
+
+  socket.on('welcome', (data) => {
+    myId = data.id;
+  });
+
+  socket.on('gameState', (state) => {
+    lastState = gameState;
+    gameState = state;
+    updateUI();
+  });
+}
+
+function updateUI() {
+  const me = gameState.players.find(p => p.id === myId);
+  myScoreEl.textContent = me ? me.score : 0;
+  playerCountEl.textContent = gameState.players.length;
+
+  scoresEl.innerHTML = '';
+  const sorted = [...gameState.players].sort((a, b) => b.score - a.score);
+  sorted.forEach(p => {
+    const div = document.createElement('div');
+    div.className = 'player-score';
+    if (p.id === myId) div.classList.add('self');
+    if (!p.alive) div.classList.add('dead');
+    div.innerHTML = `<span class="name" style="color:${p.color}">${p.id.slice(0, 8)}</span><span class="points">${p.score}</span>`;
+    scoresEl.appendChild(div);
+  });
+
+  const meAlive = me && me.alive;
+  if (!meAlive && me) {
+    overlay.style.display = 'block';
+    overlay.classList.add('death');
+  } else {
+    overlay.style.display = 'none';
+    overlay.classList.remove('death');
+  }
+}
+
+function drawGrid() {
+  ctx.strokeStyle = COLORS.grid;
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * GRID, 0);
+    ctx.lineTo(x * GRID, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * GRID);
+    ctx.lineTo(canvas.width, y * GRID);
+    ctx.stroke();
+  }
+}
+
+function drawFood() {
+  if (!gameState.food) return;
+  const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+  ctx.shadowColor = COLORS.foodGlow;
+  ctx.shadowBlur = 20 * pulse;
+  ctx.fillStyle = COLORS.food;
+  const f = gameState.food;
+  ctx.beginPath();
+  ctx.arc(f.x * GRID + GRID / 2, f.y * GRID + GRID / 2, GRID / 2 - 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+}
+
+function drawSnakes() {
+  gameState.players.forEach(player => {
+    const isMe = player.id === myId;
+    ctx.shadowColor = player.color;
+    ctx.shadowBlur = isMe ? 20 : 10;
+    ctx.fillStyle = player.color;
+
+    player.segments.forEach((seg, i) => {
+      if (!player.alive) {
+        ctx.globalAlpha = 0.3;
+      } else {
+        const fade = 1 - i * 0.02;
+        ctx.globalAlpha = Math.max(0.3, fade);
+      }
+      ctx.fillRect(seg.x * GRID + 1, seg.y * GRID + 1, GRID - 2, GRID - 2);
+    });
+
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  });
+}
+
+function draw() {
+  ctx.fillStyle = COLORS.bg;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  drawFood();
+  drawSnakes();
+  requestAnimationFrame(draw);
+}
+
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    if (overlay.style.display === 'block') {
+      socket.emit('respawn');
+    }
+    e.preventDefault();
+    return;
+  }
+
+  let dir = null;
+  switch (e.code) {
+    case 'ArrowUp':    dir = 'up'; break;
+    case 'ArrowDown':  dir = 'down'; break;
+    case 'ArrowLeft':  dir = 'left'; break;
+    case 'ArrowRight': dir = 'right'; break;
+  }
+  if (dir) {
+    socket.emit('input', dir);
+    e.preventDefault();
+  }
+});
+
+connect();
+draw();
+</script>
+</body>
+</html>
