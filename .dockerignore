@@ -1,4 +1,9 @@
-node_modules/
+target/
 .git/
+.github/
+node_modules/
 .gitignore
+.dockerignore
+.env*
 *.md
+docker-compose.yml

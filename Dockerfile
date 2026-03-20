@@ -5,7 +5,7 @@ RUN apk add --no-cache musl-dev openssl-dev pkgconfig
 WORKDIR /app
 COPY Cargo.toml Cargo.lock* ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release && rm -rf src
+RUN cargo build --release --target x86_64-unknown-linux-musl && rm -rf src
 
 COPY src ./src
 COPY public ./public
