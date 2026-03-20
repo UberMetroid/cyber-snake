@@ -1,9 +1,33 @@
 version: '3.8'
 services:
   cyber-snake:
-    build: .
+    image: ghcr.io/ubermetroid/cyber-snake:latest
+    container_name: cyber-snake
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
+      - "${API_PORT:-3001}:3001"
     environment:
-      - NODE_ENV=production
+      - TZ=${TZ:-UTC}
+      - RUST_LOG=${RUST_LOG:-info}
+      - MAX_PLAYERS=${MAX_PLAYERS:-10}
+      - TICK_RATE=${TICK_RATE:-60}
+      - COLS=${COLS:-30}
+      - ROWS=${ROWS:-30}
+      - DATA_DIR=/app/data
+      - LOG_DIR=/app/logs
+    volumes:
+      - cyber-snake-data:/app/data
+      - cyber-snake-logs:/app/logs
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  cyber-snake-data:
+    driver: local
+  cyber-snake-logs:
+    driver: local

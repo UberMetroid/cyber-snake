@@ -1,13 +1,33 @@
-FROM node:20-alpine
+FROM rust:1.75-alpine AS builder
+
+RUN apk add --no-cache musl-dev openssl-dev pkgconfig
+
+WORKDIR /app
+COPY Cargo.toml Cargo.lock* ./
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+RUN cargo build --release && rm -rf src
+
+COPY src ./src
+COPY public ./public
+
+RUN cargo build --release --target x86_64-unknown-linux-musl
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates tini
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm ci --only=production
+RUN addgroup -g 1000 app && adduser -u 1000 -G app -s /bin/sh -D app
 
-COPY server.js ./
-COPY public ./public
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/cyber-snake /app/cyber-snake
+COPY --from=builder /app/public ./public
 
-EXPOSE 3000
+RUN mkdir -p /app/data /app/logs && chown -R app:app /app
 
-CMD ["node", "server.js"]
+USER app
+
+EXPOSE 3000 3001
+
+ENTRYPOINT ["/sbin/tini", "--"]
+CMD ["/app/cyber-snake"]
