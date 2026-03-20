@@ -1,4 +1,5 @@
 use chrono::Utc;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,18 +23,6 @@ impl PowerupType {
             4 => Self::Magnet,
             5 => Self::Grow,
             _ => Self::Shrink,
-        }
-    }
-
-    pub fn duration(&self) -> i64 {
-        match self {
-            Self::Speed => 5000,
-            Self::Shield => 3000,
-            Self::Bomb => 0,
-            Self::Ghost => 5000,
-            Self::Magnet => 5000,
-            Self::Grow => 0,
-            Self::Shrink => 0,
         }
     }
 

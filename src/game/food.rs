@@ -1,4 +1,5 @@
-use chrono::{DateTime, Utc};
+use chrono::Utc;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +63,7 @@ pub const BONUS_COLORS: [&str; 6] = [
 pub fn get_bonus_color(used_colors: &[String]) -> String {
     let available: Vec<&str> = BONUS_COLORS
         .iter()
+        .copied()
         .filter(|c| !used_colors.contains(&c.to_string()))
         .collect();
 

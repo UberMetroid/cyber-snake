@@ -1,7 +1,7 @@
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub struct Point {
     pub x: i32,
     pub y: i32,
@@ -10,10 +10,6 @@ pub struct Point {
 impl Point {
     pub fn new(x: i32, y: i32) -> Self {
         Self { x, y }
-    }
-
-    pub fn distance(&self, other: &Point) -> i32 {
-        (self.x - other.x).abs() + (self.y - other.y).abs()
     }
 }
 
@@ -26,23 +22,13 @@ pub enum Direction {
 }
 
 impl Direction {
-    pub fn to_point(&self) -> Point {
+    pub fn to_point(self) -> Point {
         match self {
             Direction::Up => Point::new(0, -1),
             Direction::Down => Point::new(0, 1),
             Direction::Left => Point::new(-1, 0),
             Direction::Right => Point::new(1, 0),
         }
-    }
-
-    pub fn opposite(&self) -> bool {
-        matches!(
-            self,
-            (Direction::Up, Direction::Down)
-                | (Direction::Down, Direction::Up)
-                | (Direction::Left, Direction::Right)
-                | (Direction::Right, Direction::Left)
-        )
     }
 }
 
@@ -82,18 +68,18 @@ impl Snake {
         let mut rng = rand::thread_rng();
         let x = rng.gen_range(5..25) as i32;
         let y = rng.gen_range(5..25) as i32;
-        let dirs = vec![
+        let dirs = [
             Direction::Up,
             Direction::Down,
             Direction::Left,
             Direction::Right,
         ];
-        let dir = dirs[rng.gen_range(0..4)].clone();
+        let dir = dirs[rng.gen_range(0..4)];
 
         Self {
             id,
             segments: vec![Point::new(x, y)],
-            dir: dir.clone(),
+            dir,
             next_dir: dir,
             color,
             name,

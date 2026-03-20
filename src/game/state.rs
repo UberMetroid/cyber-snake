@@ -6,7 +6,7 @@ use crate::game::{
 use chrono::Utc;
 use parking_lot::RwLock;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -58,38 +58,32 @@ impl GameState {
     }
 
     pub fn respawn_snake(&mut self, socket_id: &str) {
-        if let Some(old_snake) = self.snakes.get(socket_id) {
-            let new_snake = self.create_snake(socket_id.to_string());
-            let new_snake = Snake {
-                id: new_snake.id,
-                segments: new_snake.segments,
-                dir: new_snake.dir,
-                next_dir: new_snake.next_dir,
-                color: old_snake.color.clone(),
-                name: old_snake.name.clone(),
-                score: old_snake.score,
-                alive: true,
-                spawned: true,
-                speed: new_snake.speed,
-                frame_count: 0,
-                death_reason: None,
-                held_powerup: None,
-                active_effects: Default::default(),
-                super_meter: 0,
-                super_mode_start: None,
-                own_food_count: 0,
-            };
-            self.snakes.insert(socket_id.to_string(), new_snake);
-            let food = Food::new(
-                socket_id.to_string(),
-                new_snake.color.clone(),
-                new_snake.head().x,
-                new_snake.head().y,
-                false,
-            );
-            self.foods.insert(socket_id.to_string(), food);
-            tracing::info!("[RESPAWN] {} {} respawned", new_snake.color, new_snake.name);
-        }
+        let (old_color, old_name, old_score) = if let Some(old_snake) = self.snakes.get(socket_id) {
+            (
+                old_snake.color.clone(),
+                old_snake.name.clone(),
+                old_snake.score,
+            )
+        } else {
+            return;
+        };
+
+        let mut new_snake = self.create_snake(socket_id.to_string());
+        new_snake.color = old_color;
+        new_snake.name = old_name;
+        new_snake.score = old_score;
+        new_snake.spawned = true;
+
+        self.snakes.insert(socket_id.to_string(), new_snake.clone());
+        let food = Food::new(
+            socket_id.to_string(),
+            new_snake.color.clone(),
+            new_snake.head().x,
+            new_snake.head().y,
+            false,
+        );
+        self.foods.insert(socket_id.to_string(), food);
+        tracing::info!("[RESPAWN] {} {} respawned", new_snake.color, new_snake.name);
     }
 
     pub fn remove_snake(&mut self, socket_id: &str) {
@@ -189,27 +183,28 @@ impl GameState {
         self.bonus_foods.retain(|bf| !bf.is_expired());
         self.powerups.retain(|pu| !pu.is_expired());
 
-        if self.bonus_foods.len() < 2 && self.tick % 480 == 0 {
+        if self.bonus_foods.len() < 2 && self.tick.is_multiple_of(480) {
             self.spawn_bonus_food();
         }
 
-        if self.powerups.len() < 3 && self.tick % 600 == 0 {
+        if self.powerups.len() < 3 && self.tick.is_multiple_of(600) {
             self.spawn_powerup();
         }
 
-        let spawned_players: Vec<&Snake> = self
+        let spawned_player_ids: Vec<String> = self
             .snakes
             .values()
             .filter(|p| p.alive && p.spawned)
+            .map(|p| p.id.clone())
             .collect();
 
-        for snake in spawned_players {
-            self.update_snake(snake.id.as_str(), now);
+        for id in spawned_player_ids {
+            self.update_snake(&id, now);
         }
     }
 
     fn update_snake(&mut self, socket_id: &str, now: i64) {
-        let snake = match self.snakes.get_mut(socket_id) {
+        let mut snake = match self.snakes.remove(socket_id) {
             Some(s) => s,
             None => return,
         };
@@ -249,10 +244,11 @@ impl GameState {
 
         let move_interval = (15 - effective_speed as i32).max(3) as u32;
         if snake.frame_count % move_interval != 0 {
+            self.snakes.insert(socket_id.to_string(), snake);
             return;
         }
 
-        snake.dir = snake.next_dir.clone();
+        snake.dir = snake.next_dir;
         let head = snake.head();
         let dir_point = snake.dir.to_point();
         let new_head = Point::new(head.x + dir_point.x, head.y + dir_point.y);
@@ -274,32 +270,42 @@ impl GameState {
                 } else {
                     Direction::Up
                 };
-                snake.next_dir = safe_dir.clone();
+                snake.next_dir = safe_dir;
                 snake.dir = safe_dir;
                 tracing::info!("[SHIELD] {} auto-turned from wall", snake.color);
+                self.snakes.insert(socket_id.to_string(), snake);
                 return;
             }
-            self.kill_snake(socket_id, "WALL");
+            snake.alive = false;
+            snake.death_reason = Some("WALL".to_string());
+            tracing::info!("[DEATH] {} {} died: WALL", snake.color, snake.name);
+            self.snakes.insert(socket_id.to_string(), snake);
             self.drop_powerup(socket_id);
             return;
         }
 
         if !ghost_active && !shield_active && !super_active {
-            for (i, seg) in snake.segments.iter().enumerate().skip(1) {
+            for (_i, seg) in snake.segments.iter().enumerate().skip(1) {
                 if new_head.x == seg.x && new_head.y == seg.y {
-                    self.kill_snake(socket_id, "SELF");
+                    snake.alive = false;
+                    snake.death_reason = Some("SELF".to_string());
+                    tracing::info!("[DEATH] {} {} died: SELF", snake.color, snake.name);
+                    self.snakes.insert(socket_id.to_string(), snake);
                     self.drop_powerup(socket_id);
                     return;
                 }
             }
         }
 
+        let mut kill_other: Option<String> = None;
+        let mut killed_by_other = false;
+
         if !ghost_active {
             for (other_id, other) in &self.snakes {
-                if !other.alive || other_id == socket_id {
+                if !other.alive {
                     continue;
                 }
-                for (i, seg) in other.segments.iter().enumerate().skip(1) {
+                for (_i, seg) in other.segments.iter().enumerate().skip(1) {
                     if new_head.x == seg.x && new_head.y == seg.y {
                         if shield_active || super_active {
                             tracing::info!(
@@ -307,19 +313,36 @@ impl GameState {
                                 other.color,
                                 snake.color
                             );
-                            self.kill_snake(other_id, "RAM");
-                            self.drop_powerup(other_id);
+                            kill_other = Some(other_id.clone());
                         } else {
-                            self.kill_snake(socket_id, "SNAKE");
-                            self.drop_powerup(socket_id);
+                            killed_by_other = true;
                         }
-                        return;
+                        break;
                     }
+                }
+                if kill_other.is_some() || killed_by_other {
+                    break;
                 }
             }
         }
 
+        if killed_by_other {
+            snake.alive = false;
+            snake.death_reason = Some("SNAKE".to_string());
+            tracing::info!("[DEATH] {} {} died: SNAKE", snake.color, snake.name);
+            self.snakes.insert(socket_id.to_string(), snake);
+            self.drop_powerup(socket_id);
+            return;
+        }
+
+        if let Some(other_id) = kill_other {
+            self.kill_snake(&other_id, "RAM");
+            self.drop_powerup(&other_id);
+        }
+
         let mut grew = false;
+        let mut spawn_new_food = false;
+        let mut new_food_super = false;
 
         if let Some(food) = self.foods.get_mut(socket_id) {
             if new_head.x == food.x && new_head.y == food.y {
@@ -361,16 +384,21 @@ impl GameState {
                             points
                         );
                     }
-                    let should_be_super = snake.own_food_count >= 5;
-                    if let Some(new_food) = self.spawn_food(socket_id, &food.color, should_be_super)
-                    {
-                        *food = new_food;
-                    }
+                    spawn_new_food = true;
+                    new_food_super = snake.own_food_count >= 5;
                 }
             }
         }
 
-        for (other_id, food) in &mut self.foods {
+        if spawn_new_food {
+            let food_color = snake.color.clone();
+            if let Some(new_food) = self.spawn_food(socket_id, &food_color, new_food_super) {
+                self.foods.insert(socket_id.to_string(), new_food);
+            }
+        }
+
+        let mut remove_super_food = None;
+        for (other_id, food) in &self.foods {
             if other_id == socket_id || !food.is_super {
                 continue;
             }
@@ -382,11 +410,15 @@ impl GameState {
                     snake.color,
                     points
                 );
-                self.foods.remove(other_id);
+                remove_super_food = Some(other_id.clone());
                 break;
             }
         }
+        if let Some(id) = remove_super_food {
+            self.foods.remove(&id);
+        }
 
+        let mut remove_bonus_food = None;
         for (i, bf) in self.bonus_foods.iter().enumerate() {
             if new_head.x == bf.x && new_head.y == bf.y {
                 let points = 100 * snake.segments.len() as u32;
@@ -397,12 +429,16 @@ impl GameState {
                     snake.color,
                     points
                 );
-                self.bonus_foods.remove(i);
-                self.spawn_bonus_food();
+                remove_bonus_food = Some(i);
                 break;
             }
         }
+        if let Some(i) = remove_bonus_food {
+            self.bonus_foods.remove(i);
+            self.spawn_bonus_food();
+        }
 
+        let mut remove_powerup = None;
         for (i, pu) in self.powerups.iter().enumerate() {
             if new_head.x == pu.x && new_head.y == pu.y {
                 if shield_active {
@@ -410,10 +446,13 @@ impl GameState {
                 } else if snake.held_powerup.is_none() {
                     snake.held_powerup = Some(pu.powerup_type.clone());
                     tracing::info!("[POWERUP] {} picked up {}", snake.color, pu.powerup_type);
-                    self.powerups.remove(i);
+                    remove_powerup = Some(i);
                 }
                 break;
             }
+        }
+        if let Some(i) = remove_powerup {
+            self.powerups.remove(i);
         }
 
         snake.segments.insert(0, new_head);
@@ -429,7 +468,7 @@ impl GameState {
             if let Some(start) = snake.super_mode_start {
                 let elapsed = (now - start) as f32 / 1000.0;
                 snake.super_meter = (100.0 - elapsed * 20.0).max(0.0) as u32;
-                if snake.super_meter <= 0 {
+                if snake.super_meter == 0 {
                     snake.active_effects.super_mode = None;
                     snake.super_mode_start = None;
                     tracing::info!("[SUPER] {} SUPER MODE ended", snake.color);
@@ -445,11 +484,17 @@ impl GameState {
                     || head.y < 0
                     || head.y >= CONFIG.rows as i32
                 {
-                    self.kill_snake(socket_id, "GHOST_OUT");
+                    snake.alive = false;
+                    snake.death_reason = Some("GHOST_OUT".to_string());
+                    tracing::info!("[DEATH] {} {} died: GHOST_OUT", snake.color, snake.name);
+                    self.snakes.insert(socket_id.to_string(), snake);
                     self.drop_powerup(socket_id);
+                    return;
                 }
             }
         }
+
+        self.snakes.insert(socket_id.to_string(), snake);
     }
 
     fn kill_snake(&mut self, socket_id: &str, reason: &str) {
@@ -496,7 +541,7 @@ impl GameState {
         self.high_scores = top_10;
     }
 
-    pub fn broadcast_state(&self) -> GameBroadcast {
+    pub fn broadcast_state(&self) -> GameBroadcast<'_> {
         GameBroadcast {
             snakes: &self.snakes,
             foods: &self.foods,

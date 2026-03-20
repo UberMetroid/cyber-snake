@@ -1,9 +1,9 @@
-pub mod state;
-pub mod snake;
 pub mod food;
 pub mod powerup;
+pub mod snake;
+pub mod state;
 
-pub use state::*;
-pub use snake::*;
 pub use food::*;
 pub use powerup::*;
+pub use snake::*;
+pub use state::*;

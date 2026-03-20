@@ -1,6 +1,5 @@
 use crate::config::CONFIG;
-use crate::game::{SharedGameState, Snake};
-use crate::server::SharedPlayerSockets;
+use crate::game::SharedGameState;
 use futures_util::{SinkExt, StreamExt};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -9,11 +8,11 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
-use tracing::{info, error};
+use tracing::{error, info};
 use uuid::Uuid;
 
 #[derive(Clone)]
-pub struct SharedPlayerSockets(pub Arc<RwLock<HashMap<String, broadcast::Sender<String>>>);
+pub struct SharedPlayerSockets(pub Arc<RwLock<HashMap<String, broadcast::Sender<String>>>>);
 
 impl SharedPlayerSockets {
     pub fn new() -> Self {
@@ -65,7 +64,7 @@ pub async fn start_ws_server(state: SharedGameState, player_sockets: SharedPlaye
     while let Ok((stream, addr)) = listener.accept().await {
         let state = state.clone();
         let player_sockets = player_sockets.clone();
-        
+
         tokio::spawn(async move {
             if let Err(e) = handle_connection(stream, addr, state, player_sockets).await {
                 error!("[WS] Connection error: {}", e);
@@ -76,38 +75,21 @@ pub async fn start_ws_server(state: SharedGameState, player_sockets: SharedPlaye
 
 async fn handle_connection(
     stream: tokio::net::TcpStream,
-    addr: std::net::SocketAddr,
+    _addr: std::net::SocketAddr,
     state: SharedGameState,
     player_sockets: SharedPlayerSockets,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ws_stream = accept_async(stream).await?;
     let (mut write, mut read) = ws_stream.split();
-    
+
     let socket_id = Uuid::new_v4().to_string();
     info!("[CONNECT] {} connected", socket_id);
-
-    {
-        let mut sockets = player_sockets.0.write();
-        sockets.insert(socket_id.clone(), broadcast::channel(100).0);
-    }
 
     let (tx, mut rx) = broadcast::channel::<String>(100);
     {
         let mut sockets = player_sockets.0.write();
-        if let Some(sender) = sockets.get(&socket_id) {
-            *sender = tx.clone();
-        }
+        sockets.insert(socket_id.clone(), tx.clone());
     }
-
-    let state_clone = state.clone();
-    let socket_id_clone = socket_id.clone();
-    let write_task = tokio::spawn(async move {
-        while let Ok(msg) = rx.recv().await {
-            if write.send(Message::Text(msg.into())).await.is_err() {
-                break;
-            }
-        }
-    });
 
     {
         let mut game = state.0.write();
@@ -126,24 +108,28 @@ async fn handle_connection(
                     name: snake.name.clone(),
                     score: snake.score,
                 },
-            }).unwrap()
+            })
+            .unwrap()
         } else {
             return Ok(());
         }
     };
 
-    write.send(Message::Text(welcome.into())).await?;
+    write.send(Message::Text(welcome)).await?;
+
+    tokio::spawn(async move {
+        while let Ok(msg) = rx.recv().await {
+            if write.send(Message::Text(msg)).await.is_err() {
+                break;
+            }
+        }
+    });
 
     while let Some(msg) = read.next().await {
         match msg {
             Ok(Message::Text(text)) => {
                 if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
-                    handle_client_message(
-                        &socket_id,
-                        client_msg,
-                        &state,
-                        &player_sockets,
-                    ).await;
+                    handle_client_message(&socket_id, client_msg, &state, &player_sockets).await;
                 }
             }
             Ok(Message::Close(_)) => break,
@@ -190,16 +176,16 @@ async fn handle_client_message(
                         "right" => Some(crate::game::Direction::Right),
                         _ => None,
                     };
-                    
+
                     if let Some(new_dir) = new_dir {
-                        let opposite = match (&new_dir, &snake.dir) {
-                            (crate::game::Direction::Up, crate::game::Direction::Down) => true,
-                            (crate::game::Direction::Down, crate::game::Direction::Up) => true,
-                            (crate::game::Direction::Left, crate::game::Direction::Right) => true,
-                            (crate::game::Direction::Right, crate::game::Direction::Left) => true,
-                            _ => false,
-                        };
-                        
+                        let opposite = matches!(
+                            (&new_dir, &snake.dir),
+                            (crate::game::Direction::Up, crate::game::Direction::Down)
+                                | (crate::game::Direction::Down, crate::game::Direction::Up)
+                                | (crate::game::Direction::Left, crate::game::Direction::Right)
+                                | (crate::game::Direction::Right, crate::game::Direction::Left)
+                        );
+
                         if !opposite {
                             snake.next_dir = new_dir;
                         }

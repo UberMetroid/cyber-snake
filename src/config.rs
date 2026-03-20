@@ -10,7 +10,6 @@ pub struct Config {
     pub timezone: String,
     pub max_players: usize,
     pub tick_rate: u64,
-    pub grid_size: u32,
     pub cols: u32,
     pub rows: u32,
     pub data_dir: PathBuf,
@@ -36,7 +35,6 @@ impl Config {
                 .unwrap_or_else(|_| "60".into())
                 .parse()
                 .unwrap_or(60),
-            grid_size: 20,
             cols: env::var("COLS")
                 .unwrap_or_else(|_| "30".into())
                 .parse()
