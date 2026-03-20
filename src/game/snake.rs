@@ -55,6 +55,7 @@ pub struct Snake {
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ActiveEffects {
     pub speed_boost: Option<i64>,
     pub shield: Option<i64>,
