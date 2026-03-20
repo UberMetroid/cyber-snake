@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
-use tracing::{error, info};
+use tracing::info;
 use uuid::Uuid;
 
 #[derive(Clone)]
