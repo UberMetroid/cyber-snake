@@ -1,6 +1,5 @@
 use once_cell::sync::Lazy;
 use std::env;
-use std::path::PathBuf;
 
 pub static CONFIG: Lazy<Config> = Lazy::new(Config::from_env);
 
@@ -12,15 +11,10 @@ pub struct Config {
     pub tick_rate: u64,
     pub cols: u32,
     pub rows: u32,
-    pub data_dir: PathBuf,
-    pub log_dir: PathBuf,
 }
 
 impl Config {
     fn from_env() -> Self {
-        let data_dir = env::var("DATA_DIR").unwrap_or_else(|_| "/app/data".into());
-        let log_dir = env::var("LOG_DIR").unwrap_or_else(|_| "/app/logs".into());
-
         Self {
             port: env::var("PORT")
                 .unwrap_or_else(|_| "8300".into())
@@ -43,8 +37,6 @@ impl Config {
                 .unwrap_or_else(|_| "30".into())
                 .parse()
                 .unwrap_or(30),
-            data_dir: PathBuf::from(data_dir),
-            log_dir: PathBuf::from(log_dir),
         }
     }
 }

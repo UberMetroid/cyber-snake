@@ -21,8 +21,6 @@ WORKDIR /app
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/cyber-snake /app/cyber-snake
 COPY public ./public
 
-RUN mkdir -p /app/data /app/logs
-
 EXPOSE 8300
 
 ENTRYPOINT ["/sbin/tini", "--"]

@@ -31,12 +31,6 @@ services:
       - TICK_RATE=${TICK_RATE:-60}
       - COLS=${COLS:-30}
       - ROWS=${ROWS:-30}
-      - DATA_DIR=/app/data
-      - LOG_DIR=/app/logs
-    volumes:
-      # Use absolute paths to your shared folders for easy backup/access
-      - /volume1/docker/cyber-snake/data:/app/data
-      - /volume1/docker/cyber-snake/logs:/app/logs
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8300/health"]
