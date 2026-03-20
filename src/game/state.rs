@@ -249,20 +249,37 @@ impl GameState {
             .map(|s| s.id.clone())
             .collect();
 
+        let mut bots_to_activate = Vec::new();
+
         for id in bot_ids {
-            let (head, current_dir) = {
+            let (head, current_dir, has_powerup, bot_color) = {
                 let bot = self.snakes.get(&id).unwrap();
-                (bot.head(), bot.dir)
+                (
+                    bot.head(),
+                    bot.dir,
+                    bot.held_powerup.is_some(),
+                    bot.color.clone(),
+                )
             };
 
+            if has_powerup {
+                let mut rng = rand::thread_rng();
+                // 2% chance per tick to activate powerup
+                if rng.gen_bool(0.02) {
+                    bots_to_activate.push(id.clone());
+                }
+            }
+
             // Find nearest food
-            let mut nearest_food = None;
+            let mut nearest_target = None;
             let mut min_dist = i32::MAX;
             for food in self.foods.values() {
                 let dist = (head.x - food.x).abs() + (head.y - food.y).abs();
-                if dist < min_dist {
-                    min_dist = dist;
-                    nearest_food = Some(Point::new(food.x, food.y));
+                let is_own = food.color == bot_color;
+                let weighted_dist = if is_own { dist / 2 } else { dist };
+                if weighted_dist < min_dist {
+                    min_dist = weighted_dist;
+                    nearest_target = Some(Point::new(food.x, food.y));
                 }
             }
 
@@ -270,7 +287,15 @@ impl GameState {
                 let dist = (head.x - bf.x).abs() + (head.y - bf.y).abs();
                 if dist < min_dist {
                     min_dist = dist;
-                    nearest_food = Some(Point::new(bf.x, bf.y));
+                    nearest_target = Some(Point::new(bf.x, bf.y));
+                }
+            }
+
+            for pu in &self.powerups {
+                let dist = (head.x - pu.x).abs() + (head.y - pu.y).abs();
+                if dist < min_dist {
+                    min_dist = dist;
+                    nearest_target = Some(Point::new(pu.x, pu.y));
                 }
             }
 
@@ -324,15 +349,15 @@ impl GameState {
                 best_dir = valid_dirs[0];
             }
 
-            // Pathfind to food if possible and safe
+            // Pathfind to target if possible and safe
             if !valid_dirs.is_empty() {
-                if let Some(food_pos) = nearest_food {
+                if let Some(target_pos) = nearest_target {
                     let mut best_dist = i32::MAX;
                     for dir in valid_dirs.iter() {
                         let dp = dir.to_point();
                         let nx = head.x + dp.x;
                         let ny = head.y + dp.y;
-                        let dist = (nx - food_pos.x).abs() + (ny - food_pos.y).abs();
+                        let dist = (nx - target_pos.x).abs() + (ny - target_pos.y).abs();
                         if dist < best_dist {
                             best_dist = dist;
                             best_dir = *dir;
@@ -350,6 +375,9 @@ impl GameState {
             }
         }
 
+        for id in bots_to_activate {
+            self.activate_powerup(&id);
+        }
         if self.bonus_foods.len() < 2 && self.tick.is_multiple_of(480) {
             self.spawn_bonus_food();
         }
@@ -559,16 +587,50 @@ impl GameState {
 
         if !ghost_active {
             for (other_id, other) in &self.snakes {
-                if !other.alive {
+                if !other.alive || other_id == socket_id {
                     continue;
                 }
-                for (_i, seg) in other.segments.iter().enumerate().skip(1) {
+
+                // Compare with all segments of other snake (including head)
+                for (_i, seg) in other.segments.iter().enumerate() {
                     if new_head.x == seg.x && new_head.y == seg.y {
+                        let now = chrono::Utc::now().timestamp_millis();
+                        let other_speed_boost = other
+                            .active_effects
+                            .speed_boost
+                            .map(|t| t > now)
+                            .unwrap_or(false);
+                        let other_slowed = other
+                            .active_effects
+                            .slowed
+                            .map(|t| t > now)
+                            .unwrap_or(false);
+
+                        let mut other_effective_speed = if other_speed_boost {
+                            other.speed + 4
+                        } else {
+                            other.speed
+                        };
+
+                        if other_slowed {
+                            other_effective_speed =
+                                (other_effective_speed as f32 * 0.5).max(1.0) as u32;
+                        }
+
                         if shield_active || super_active {
                             tracing::info!(
                                 "[SHIELD/STAR] {} killed by {} ram",
                                 other.color,
                                 snake.color
+                            );
+                            kill_other = Some((other_id.clone(), other.name.clone()));
+                        } else if snake.segments.len() > other.segments.len()
+                            || effective_speed > other_effective_speed
+                        {
+                            tracing::info!(
+                                "[DOMINANCE] {} (Size: {}, Spd: {}) destroyed {} (Size: {}, Spd: {})",
+                                snake.name, snake.segments.len(), effective_speed,
+                                other.name, other.segments.len(), other_effective_speed
                             );
                             kill_other = Some((other_id.clone(), other.name.clone()));
                         } else {
