@@ -592,7 +592,7 @@ impl GameState {
                 }
 
                 // Compare with all segments of other snake (including head)
-                for (_i, seg) in other.segments.iter().enumerate() {
+                for seg in other.segments.iter() {
                     if new_head.x == seg.x && new_head.y == seg.y {
                         let now = chrono::Utc::now().timestamp_millis();
                         let other_speed_boost = other
