@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER_SNAKE</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050508;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    color: #0ff;
+  }
+  #container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+  }
+  #header {
+    width: 600px;
+    padding: 10px 0;
+    display: flex;
+    justify-content: center;
+  }
+  #spawnBtn {
+    background: transparent;
+    border: 2px solid #0ff;
+    color: #0ff;
+    padding: 12px 40px;
+    font-family: 'Courier New', monospace;
+    font-size: 18px;
+    cursor: pointer;
+    text-shadow: 0 0 10px #0ff;
+    letter-spacing: 4px;
+    transition: all 0.2s;
+  }
+  #spawnBtn:hover:not(:disabled) {
+    background: rgba(0, 255, 255, 0.15);
+    box-shadow: 0 0 30px #0ff;
+  }
+  #spawnBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  canvas {
+    display: block;
+    border: 2px solid #0ff;
+    box-shadow: 0 0 20px #0ff, inset 0 0 20px rgba(0, 255, 255, 0.1);
+  }
+  #stats {
+    width: 600px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    font-size: 14px;
+    letter-spacing: 2px;
+  }
+  #stats .label { color: #0ff; text-shadow: 0 0 10px #0ff; }
+  #stats .value { color: #fff; min-width: 60px; text-align: right; }
+  #stats .stat-item { display: flex; align-items: center; gap: 8px; }
+  #powerup-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #powerup-indicator .label { color: #0ff; text-shadow: 0 0 10px #0ff; }
+  #powerup-box {
+    width: 30px;
+    height: 30px;
+    border: 2px solid #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  }
+  #powerup-box.has-powerup { border-color: #0ff; box-shadow: 0 0 10px currentColor; }
+  #super-meter-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  #super-meter-container .label { color: #ffff00; text-shadow: 0 0 10px #ffff00; }
+  #super-meter-bar {
+    width: 100px;
+    height: 16px;
+    border: 2px solid #ffff00;
+    background: rgba(0,0,0,0.5);
+    position: relative;
+  }
+  #super-meter-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ffff00, #ff00ff);
+    width: 0%;
+    transition: width 0.2s;
+  }
+  #super-meter-bar.active {
+    box-shadow: 0 0 15px #ffff00;
+    animation: superPulse 0.5s infinite;
+  }
+  @keyframes superPulse {
+    0%, 100% { box-shadow: 0 0 15px #ffff00; }
+    50% { box-shadow: 0 0 25px #ff00ff; }
+  }
+  #scoreboard {
+    width: 600px;
+    background: rgba(0, 0, 0, 0.8);
+    border: 1px solid #0ff;
+    padding: 10px;
+    font-size: 12px;
+  }
+  #scoreboard h3 {
+    color: #0ff;
+    text-shadow: 0 0 10px #0ff;
+    margin-bottom: 10px;
+    font-size: 14px;
+    letter-spacing: 2px;
+  }
+  .player-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 0;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+  }
+  .player-row .name { color: #fff; }
+  .player-row .points { color: #0ff; }
+  .player-row.dead .name { text-decoration: line-through; opacity: 0.5; }
+  .player-row.self .name { color: #fff; }
+  .player-row:not(.spawned) .name { opacity: 0.4; }
+  #overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: none;
+    justify-content: center;
+    align-items: center;
+    background: rgba(5, 5, 8, 0.9);
+    z-index: 100;
+  }
+  #overlay.show { display: flex; }
+  #overlayContent {
+    text-align: center;
+    padding: 40px;
+    border: 1px solid #0ff;
+    background: rgba(5, 5, 8, 0.95);
+  }
+  #overlayContent h1 {
+    font-size: 32px;
+    margin-bottom: 15px;
+    letter-spacing: 4px;
+  }
+  #overlayContent p {
+    font-size: 14px;
+    margin-bottom: 15px;
+  }
+  #overlayContent .blink {
+    animation: blink 1s infinite;
+  }
+  #overlayContent button {
+    background: transparent;
+    border: 2px solid #0ff;
+    color: #0ff;
+    padding: 12px 30px;
+    font-family: 'Courier New', monospace;
+    font-size: 16px;
+    cursor: pointer;
+    text-shadow: 0 0 10px #0ff;
+    letter-spacing: 3px;
+    margin-top: 10px;
+  }
+  #overlayContent button:hover {
+    background: rgba(0, 255, 255, 0.15);
+    box-shadow: 0 0 30px #0ff;
+  }
+  #overlayContent.dead h1 { color: #ff0044; text-shadow: 0 0 10px #ff0044; }
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="container">
+  <div id="header">
+    <button id="spawnBtn" disabled>SPAWN</button>
+  </div>
+  <canvas id="game" width="600" height="600"></canvas>
+  <div id="stats">
+    <div class="stat-item">
+      <span class="label">SCORE:</span>
+      <span class="value" id="scoreValue">0</span>
+    </div>
+    <div class="stat-item">
+      <span class="label">PLAYERS:</span>
+      <span class="value" id="playerCount">0/0</span>
+    </div>
+    <div id="powerup-indicator" class="stat-item">
+      <span class="label">POWERUP:</span>
+      <div id="powerup-box"></div>
+    </div>
+    <div id="super-meter-container" class="stat-item">
+      <span class="label">SUPER:</span>
+      <div id="super-meter-bar"><div id="super-meter-fill"></div></div>
+    </div>
+  </div>
+  <div id="debug" style="display:none; width:600px; background:rgba(0,0,0,0.8); border:1px solid #0ff; padding:5px; font-size:11px; color:#0ff;"></div>
+  <div id="scoreboard">
+    <h3>// SCOREBOARD</h3>
+    <div id="scores"></div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="overlayContent">
+    <h1 id="overlayTitle">TERMINATED</h1>
+    <p id="overlayMsg">SCORE: 0</p>
+    <button id="overlayBtn">RESPAWN</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const container = document.getElementById('container');
+const spawnBtn = document.getElementById('spawnBtn');
+const scoreValue = document.getElementById('scoreValue');
+const scoresEl = document.getElementById('scores');
+const overlay = document.getElementById('overlay');
+const overlayContent = document.getElementById('overlayContent');
+const overlayTitle = document.getElementById('overlayTitle');
+const overlayMsg = document.getElementById('overlayMsg');
+const overlayBtn = document.getElementById('overlayBtn');
+const powerupBox = document.getElementById('powerup-box');
+const superMeterFill = document.getElementById('super-meter-fill');
+const superMeterBar = document.getElementById('super-meter-bar');
+const debugEl = document.getElementById('debug');
+
+const GRID = 20;
+const COLS = 30;
+const ROWS = 30;
+
+let socket = null;
+let myId = null;
+let myColor = '#00ff88';
+let myName = '';
+let gameState = { snakes: {}, foods: {}, bonusFoods: [], powerups: [], tick: 0 };
+let prevGameState = { snakes: {}, foods: {}, bonusFoods: [], powerups: [], tick: 0 };
+let alive = true;
+let spawned = false;
+let score = 0;
+let deathReason = null;
+let heldPowerup = null;
+let activeEffects = {};
+let explosions = [];
+let superMeter = 0;
+let superModeActive = false;
+let lastServerUpdate = 0;
+let serverTickInterval = 1000 / 60;
+let debugMode = false;
+let lastPing = 0;
+let frameCount = 0;
+let fps = 0;
+let lastFpsUpdate = Date.now();
+
+const POWERUP_COLORS = { SPEED: '#ffff00', SHIELD: '#00ffff', BOMB: '#ff0000', GHOST: '#9900ff', MAGNET: '#ff00ff', GROW: '#00ff00', SHRINK: '#ff8800' };
+const POWERUP_SHAPES = { SPEED: '⚡', SHIELD: '🛡️', BOMB: '💣', GHOST: '👻', MAGNET: '🧲', GROW: '⬆️', SHRINK: '⬇️' };
+
+const DEATH_MESSAGES = {
+  'WALL': 'WALL COLLISION',
+  'SELF': 'SELF COLLISION',
+  'SNAKE': 'SNAKE COLLISION',
+  'HEAD_TO_HEAD': 'HEAD TO HEAD',
+  'BOMB': 'BOMB KILL',
+  'RAM': 'RAMMED'
+};
+
+function showOverlay(cls, title, msg) {
+  overlayContent.className = cls;
+  overlayTitle.textContent = title;
+  overlayMsg.innerHTML = msg;
+  overlay.classList.add('show');
+}
+
+function hideOverlay() {
+  overlay.classList.remove('show');
+}
+
+function connect() {
+  socket = io();
+
+  socket.on('connect', () => {
+    console.log('[CONNECTION] Connected to server');
+  });
+
+  socket.on('disconnect', () => {
+    console.log('[CONNECTION] Disconnected from server');
+    spawnBtn.disabled = true;
+    showOverlay('', 'DISCONNECTED', 'Connection lost<br><button onclick="location.reload()">RELOAD</button>');
+  });
+
+  socket.on('connect_error', (err) => {
+    console.error('[CONNECTION ERROR]', err.message);
+  });
+
+  socket.on('reconnecting', () => {
+    console.log('[CONNECTION] Reconnecting...');
+  });
+
+  socket.on('welcome', (data) => {
+    myId = data.id;
+    myColor = data.snake.color;
+    myName = data.snake.name;
+    spawnBtn.disabled = false;
+    spawnBtn.onclick = spawn;
+  });
+
+  socket.on('full', () => {
+    showOverlay('', 'SERVER FULL', 'Maximum players reached');
+  });
+
+  socket.on('gameState', (state) => {
+    prevGameState = JSON.parse(JSON.stringify(gameState));
+    lastServerUpdate = Date.now();
+    gameState = state;
+    updateUI();
+  });
+
+  socket.on('pong', () => {
+    lastPing = Date.now() - lastPing;
+  });
+
+  socket.on('bombExplosion', (data) => {
+    explosions.push({ ...data, startTime: Date.now() });
+  });
+}
+
+function spawn() {
+  if (spawned) return;
+  spawned = true;
+  spawnBtn.disabled = true;
+  spawnBtn.textContent = 'SPAWNED';
+  socket.emit('spawn');
+}
+
+function respawn() {
+  hideOverlay();
+  socket.emit('respawn');
+}
+
+function updateUI() {
+  const me = gameState.snakes[myId];
+  if (me) {
+    score = me.score;
+    alive = me.alive;
+    spawned = me.spawned;
+    deathReason = me.deathReason;
+    heldPowerup = me.heldPowerup;
+    activeEffects = me.activeEffects || {};
+    superMeter = me.superMeter || 0;
+    const now = Date.now();
+    superModeActive = me.activeEffects.superMode && me.activeEffects.superMode > now;
+  }
+  scoreValue.textContent = score;
+  
+  superMeterFill.style.width = superMeter + '%';
+  if (superModeActive) {
+    superMeterBar.classList.add('active');
+    superMeterFill.style.width = '100%';
+  } else {
+    superMeterBar.classList.remove('active');
+  }
+  
+  if (heldPowerup) {
+    powerupBox.textContent = POWERUP_SHAPES[heldPowerup] || '?';
+    powerupBox.style.color = POWERUP_COLORS[heldPowerup] || '#fff';
+    powerupBox.classList.add('has-powerup');
+  } else {
+    powerupBox.textContent = '';
+    powerupBox.style.color = '';
+    powerupBox.classList.remove('has-powerup');
+  }
+
+  const players = Object.values(gameState.snakes);
+  const spawnedPlayers = players.filter(p => p.spawned);
+  const alivePlayers = spawnedPlayers.filter(p => p.alive);
+  document.getElementById('playerCount').textContent = `${alivePlayers.length}/${players.length}`;
+
+  players.sort((a, b) => b.score - a.score);
+  scoresEl.innerHTML = '';
+  for (const [id, p] of Object.entries(gameState.snakes)) {
+    const div = document.createElement('div');
+    div.className = 'player-row';
+    if (id === myId) div.classList.add('self');
+    if (!p.alive) div.classList.add('dead');
+    if (!p.spawned) div.classList.add('notspawned');
+    div.innerHTML = `<span class="name" style="color:${p.color}">${p.color}</span><span class="points">${p.score}</span>`;
+    scoresEl.appendChild(div);
+  }
+
+  if (!alive && spawned && !overlay.classList.contains('show')) {
+    const reasonMsg = deathReason ? DEATH_MESSAGES[deathReason] || 'UNKNOWN' : 'UNKNOWN';
+    showOverlay('dead', 'TERMINATED', `${reasonMsg}<br>SCORE: ${score}<br><span class="blink">[ PRESS SPACE OR CLICK TO RESPAWN ]</span>`);
+  }
+}
+
+function drawGrid() {
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.05)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * GRID, 0);
+    ctx.lineTo(x * GRID, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * GRID);
+    ctx.lineTo(canvas.width, y * GRID);
+    ctx.stroke();
+  }
+}
+
+function drawFood() {
+  const now = Date.now();
+  const pulse = Math.sin(now / 200) * 0.3 + 0.7;
+  const elapsed = now - lastServerUpdate;
+  const t = Math.min(1, elapsed / serverTickInterval);
+
+  for (const [ownerId, food] of Object.entries(gameState.foods)) {
+    if (!food) continue;
+    const isMyFood = ownerId === myId;
+    
+    let drawX = food.x;
+    let drawY = food.y;
+    const prevFood = prevGameState.foods ? prevGameState.foods[ownerId] : null;
+    if (prevFood) {
+      drawX = prevFood.x + (food.x - prevFood.x) * t;
+      drawY = prevFood.y + (food.y - prevFood.y) * t;
+    }
+    
+    const cx = drawX * GRID + GRID / 2;
+    const cy = drawY * GRID + GRID / 2;
+    
+    ctx.shadowColor = food.color;
+    ctx.shadowBlur = isMyFood ? 25 : 15;
+    ctx.fillStyle = food.color;
+    ctx.strokeStyle = food.color;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = isMyFood ? 1 : 0.8;
+    
+    if (food.isRing) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, GRID / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (food.isSuper) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, GRID / 2 - 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy, GRID / 2 + 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(cx, cy, GRID / 2 - 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function drawSnakes() {
+  const now = Date.now();
+  const elapsed = now - lastServerUpdate;
+  const t = Math.min(1, elapsed / serverTickInterval);
+  
+  for (const [id, snake] of Object.entries(gameState.snakes)) {
+    if (!snake.spawned) continue;
+    const isMe = id === myId;
+    const effects = snake.activeEffects || {};
+    const ghostActive = effects.ghost && effects.ghost > now;
+    
+    if (ghostActive && !isMe) continue;
+    
+    const shieldActive = effects.shield && effects.shield > now;
+    const speedActive = effects.speedBoost && effects.speedBoost > now;
+    
+    ctx.shadowColor = snake.color;
+    ctx.shadowBlur = isMe ? 25 : 12;
+    ctx.fillStyle = snake.color;
+
+    if (ghostActive) {
+      ctx.globalAlpha = 0.4;
+    } else if (!snake.alive) {
+      ctx.globalAlpha = 0.3;
+    } else {
+      ctx.globalAlpha = Math.max(0.3, 1 - snake.segments.length * 0.01);
+    }
+
+    const prevSnake = prevGameState.snakes[id];
+    snake.segments.forEach((seg, i) => {
+      let drawX = seg.x;
+      let drawY = seg.y;
+      
+      if (prevSnake && prevSnake.segments && prevSnake.segments[i]) {
+        const prevSeg = prevSnake.segments[i];
+        drawX = prevSeg.x + (seg.x - prevSeg.x) * t;
+        drawY = prevSeg.y + (seg.y - prevSeg.y) * t;
+      }
+      
+      ctx.fillRect(drawX * GRID + 1, drawY * GRID + 1, GRID - 2, GRID - 2);
+    });
+
+    let headX = snake.segments[0].x;
+    let headY = snake.segments[0].y;
+    if (prevSnake && prevSnake.segments && prevSnake.segments[0]) {
+      headX = prevSnake.segments[0].x + (snake.segments[0].x - prevSnake.segments[0].x) * t;
+      headY = prevSnake.segments[0].y + (snake.segments[0].y - prevSnake.segments[0].y) * t;
+    }
+
+    if (shieldActive && snake.alive) {
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = 3;
+      ctx.shadowColor = '#00ffff';
+      ctx.shadowBlur = 15;
+      ctx.strokeRect(headX * GRID - 1, headY * GRID - 1, GRID + 2, GRID + 2);
+    }
+
+    if (speedActive && snake.alive) {
+      ctx.fillStyle = '#ffff00';
+      ctx.shadowColor = '#ffff00';
+      ctx.globalAlpha = 0.6;
+      for (let i = 1; i <= 3; i++) {
+        const trail = snake.segments[i];
+        const prevTrail = prevSnake && prevSnake.segments ? prevSnake.segments[i] : null;
+        if (trail) {
+          let tx = trail.x;
+          let ty = trail.y;
+          if (prevTrail) {
+            tx = prevTrail.x + (trail.x - prevTrail.x) * t;
+            ty = prevTrail.y + (trail.y - prevTrail.y) * t;
+          }
+          ctx.fillRect(tx * GRID + 3, ty * GRID + 3, GRID - 6, GRID - 6);
+        }
+      }
+    }
+
+    const slowedActive = effects.slowed && effects.slowed > now;
+    if (slowedActive && snake.alive) {
+      const pulse = Math.sin(now / 100) * 0.3 + 0.7;
+      ctx.strokeStyle = `rgba(255, 0, 0, ${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#ff0000';
+      ctx.shadowBlur = 10;
+      ctx.strokeRect(headX * GRID - 2, headY * GRID - 2, GRID + 4, GRID + 4);
+    }
+
+    const magnetActive = effects.magnet && effects.magnet > now;
+    if (magnetActive && snake.alive) {
+      const pulse = Math.sin(now / 80) * 0.2 + 0.4;
+      ctx.strokeStyle = `rgba(255, 0, 255, ${pulse})`;
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#ff00ff';
+      ctx.shadowBlur = 15;
+      const cx = headX * GRID + GRID / 2;
+      const cy = headY * GRID + GRID / 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, GRID * 5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const superActive = effects.superMode && effects.superMode > now;
+    if (superActive && snake.alive) {
+      const pulse = Math.sin(now / 50) * 0.3 + 0.7;
+      const hue = (now / 10) % 360;
+      ctx.shadowColor = `hsl(${hue}, 100%, 50%)`;
+      ctx.shadowBlur = 30 * pulse;
+      ctx.strokeStyle = `hsla(${hue}, 100%, 50%, ${pulse})`;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(headX * GRID - 4, headY * GRID - 4, GRID + 8, GRID + 8);
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+}
+
+function drawPowerup() {
+  if (!gameState.powerups || gameState.powerups.length === 0) return;
+  const now = Date.now();
+  const pulse = Math.sin(now / 150) * 0.3 + 0.7;
+  
+  for (const p of gameState.powerups) {
+    const cx = p.x * GRID + GRID / 2;
+    const cy = p.y * GRID + GRID / 2;
+    
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 20 * pulse;
+    ctx.fillStyle = p.color;
+    
+    ctx.font = '18px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    if (p.type === 'SPEED') {
+      ctx.fillText('⚡', cx, cy);
+    } else if (p.type === 'SHIELD') {
+      ctx.fillText('🛡️', cx, cy);
+    } else if (p.type === 'BOMB') {
+      ctx.fillText('💣', cx, cy);
+    } else if (p.type === 'GHOST') {
+      ctx.globalAlpha = pulse;
+      ctx.fillText('👻', cx, cy);
+      ctx.globalAlpha = 1;
+    } else if (p.type === 'MAGNET') {
+      ctx.fillText('🧲', cx, cy);
+    } else if (p.type === 'GROW') {
+      ctx.fillText('⬆️', cx, cy);
+    } else if (p.type === 'SHRINK') {
+      ctx.fillText('⬇️', cx, cy);
+    }
+  }
+  
+  ctx.shadowBlur = 0;
+}
+
+function drawBonusFoods() {
+  const now = Date.now();
+  const pulse = Math.sin(now / 200) * 0.3 + 0.7;
+  const elapsed = now - lastServerUpdate;
+  const t = Math.min(1, elapsed / serverTickInterval);
+
+  for (const bf of gameState.bonusFoods) {
+    let drawX = bf.x;
+    let drawY = bf.y;
+    
+    const prevBf = prevGameState.bonusFoods ? prevGameState.bonusFoods.find(b => b.x === bf.x && b.y === bf.y) : null;
+    if (prevBf) {
+      drawX = prevBf.x + (bf.x - prevBf.x) * t;
+      drawY = prevBf.y + (bf.y - prevBf.y) * t;
+    }
+    
+    const cx = drawX * GRID + GRID / 2;
+    const cy = drawY * GRID + GRID / 2;
+    
+    ctx.shadowColor = bf.color;
+    ctx.shadowBlur = 20 * pulse;
+    ctx.fillStyle = bf.color;
+    ctx.strokeStyle = bf.color;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.9;
+    
+    if (bf.isRing) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, GRID / 2, 0, Math.PI * 2);
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(cx, cy, GRID / 2 - 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('★', cx, cy);
+  }
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function drawExplosions() {
+  const now = Date.now();
+  const duration = 500;
+  
+  explosions = explosions.filter(e => now - e.startTime < duration);
+  
+  for (const exp of explosions) {
+    const elapsed = now - exp.startTime;
+    const progress = elapsed / duration;
+    const cx = exp.x * GRID + GRID / 2;
+    const cy = exp.y * GRID + GRID / 2;
+    
+    const maxRadius = GRID * 10;
+    const radius = maxRadius * progress;
+    const alpha = 1 - progress;
+    
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 100, 0, ${alpha})`;
+    ctx.lineWidth = 4 * (1 - progress);
+    ctx.shadowColor = '#ff6400';
+    ctx.shadowBlur = 20 * (1 - progress);
+    ctx.stroke();
+    
+    if (progress < 0.3) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, GRID * (1 - progress * 3), 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255, 200, 100, ${1 - progress * 3})`;
+      ctx.fill();
+    }
+  }
+  ctx.shadowBlur = 0;
+}
+
+function draw() {
+  frameCount++;
+  const now = Date.now();
+  if (now - lastFpsUpdate >= 1000) {
+    fps = frameCount;
+    frameCount = 0;
+    lastFpsUpdate = now;
+    if (socket && socket.connected) {
+      lastPing = Date.now();
+      socket.emit('ping');
+    }
+  }
+
+  ctx.fillStyle = '#050508';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  drawGrid();
+  drawFood();
+  drawBonusFoods();
+  drawPowerup();
+  drawExplosions();
+  drawSnakes();
+  
+  if (debugMode) {
+    const elapsed = now - lastServerUpdate;
+    const t = Math.min(1, elapsed / serverTickInterval);
+    debugEl.innerHTML = `
+      FPS: ${fps} | 
+      TICK: ${gameState.tick} | 
+      INTERP: ${(t * 100).toFixed(0)}% | 
+      PING: ${lastPing}ms |
+      SNAKES: ${Object.keys(gameState.snakes).length} |
+      FOOD: ${Object.keys(gameState.foods).length} |
+      POWERUPS: ${gameState.powerups ? gameState.powerups.length : 0}
+    `;
+  }
+  
+  requestAnimationFrame(draw);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    if (overlay.classList.contains('show')) {
+      respawn();
+    } else if (!spawned) {
+      spawn();
+    } else if (alive && heldPowerup) {
+      socket.emit('activatePowerup');
+    }
+    e.preventDefault();
+    return;
+  }
+
+  if (e.code === 'KeyD') {
+    debugMode = !debugMode;
+    debugEl.style.display = debugMode ? 'block' : 'none';
+    console.log('[DEBUG] Debug mode:', debugMode ? 'ON' : 'OFF');
+    return;
+  }
+
+  if (!alive || !spawned) return;
+
+  let dir = null;
+  switch (e.code) {
+    case 'ArrowUp': dir = 'up'; break;
+    case 'ArrowDown': dir = 'down'; break;
+    case 'ArrowLeft': dir = 'left'; break;
+    case 'ArrowRight': dir = 'right'; break;
+  }
+
+  if (dir) {
+    socket.emit('input', dir);
+    e.preventDefault();
+  }
+});
+
+overlayBtn.onclick = respawn;
+
+window.onerror = (msg, url, line) => {
+  console.error(`[CLIENT ERROR] ${msg} at ${url}:${line}`);
+  return false;
+};
+
+connect();
+draw();
+</script>
+</body>
+</html>
