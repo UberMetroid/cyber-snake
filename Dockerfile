@@ -18,14 +18,10 @@ RUN apk add --no-cache ca-certificates tini
 
 WORKDIR /app
 
-RUN addgroup -g 1000 app && adduser -u 1000 -G app -s /bin/sh -D app
-
 COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/cyber-snake /app/cyber-snake
 COPY public ./public
 
-RUN mkdir -p /app/data /app/logs && chown -R app:app /app
-
-USER app
+RUN mkdir -p /app/data /app/logs
 
 EXPOSE 8300
 
