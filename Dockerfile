@@ -1,24 +1,22 @@
-FROM rust:alpine AS builder
-
-RUN apk add --no-cache musl-dev openssl-dev pkgconfig
+FROM rust:1.75-slim-bookworm AS builder
 
 WORKDIR /app
 COPY Cargo.toml Cargo.lock* ./
 RUN mkdir src && echo "fn main() {}" > src/main.rs
-RUN cargo build --release --target x86_64-unknown-linux-musl && rm -rf src
+RUN cargo build --release && rm -rf src
 
 COPY src ./src
 
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --release
 
-FROM alpine:3.19
+FROM debian:bookworm-slim
 LABEL org.opencontainers.image.source="https://github.com/ubermetroid/cyber-snake"
 
-RUN apk add --no-cache ca-certificates
+RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/cyber-snake /app/cyber-snake
+COPY --from=builder /app/target/release/cyber-snake /app/cyber-snake
 COPY public ./public
 
 EXPOSE 8300
