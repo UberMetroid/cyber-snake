@@ -293,14 +293,7 @@ async fn handle_client_message(socket_id: &str, msg: ClientMessage, state: &Arc<
         }
         ClientMessage::ActivatePowerup => {
             let mut game = state.game_state.0.write();
-            if let Some(snake) = game.snakes.get_mut(socket_id) {
-                if snake.alive && snake.spawned {
-                    if let Some(powerup_type) = &snake.held_powerup {
-                        info!("[POWERUP] {} activated {}", snake.color, powerup_type);
-                        snake.held_powerup = None;
-                    }
-                }
-            }
+            game.activate_powerup(socket_id);
         }
         ClientMessage::Respawn => {
             let mut game = state.game_state.0.write();

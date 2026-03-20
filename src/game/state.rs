@@ -203,6 +203,82 @@ impl GameState {
         }
     }
 
+    pub fn activate_powerup(&mut self, socket_id: &str) {
+        let now = Utc::now().timestamp_millis();
+        let (head, powerup_type) = {
+            let snake = match self.snakes.get_mut(socket_id) {
+                Some(s) if s.alive && s.spawned => s,
+                _ => return,
+            };
+
+            let p_type = match snake.held_powerup.take() {
+                Some(p) => p,
+                None => return,
+            };
+
+            (snake.head(), p_type)
+        };
+
+        tracing::info!("[POWERUP] Snake {} activated {}", socket_id, powerup_type);
+
+        match powerup_type.as_str() {
+            "SPEED" => {
+                if let Some(snake) = self.snakes.get_mut(socket_id) {
+                    snake.active_effects.speed_boost = Some(now + 5000);
+                }
+            }
+            "SHIELD" => {
+                if let Some(snake) = self.snakes.get_mut(socket_id) {
+                    snake.active_effects.shield = Some(now + 5000);
+                }
+            }
+            "GHOST" => {
+                if let Some(snake) = self.snakes.get_mut(socket_id) {
+                    snake.active_effects.ghost = Some(now + 10000);
+                }
+            }
+            "MAGNET" => {
+                if let Some(snake) = self.snakes.get_mut(socket_id) {
+                    snake.active_effects.magnet = Some(now + 10000);
+                }
+            }
+            "GROW" => {
+                if let Some(snake) = self.snakes.get_mut(socket_id) {
+                    if let Some(&last) = snake.segments.last() {
+                        for _ in 0..5 {
+                            snake.segments.push(last);
+                        }
+                    }
+                    snake.score += 250;
+                }
+            }
+            "SHRINK" => {
+                if let Some(snake) = self.snakes.get_mut(socket_id) {
+                    let new_len = (snake.segments.len() / 2).max(3);
+                    snake.segments.truncate(new_len);
+                }
+            }
+            "BOMB" => {
+                let radius = 10;
+                let mut to_kill = Vec::new();
+                for (other_id, other_snake) in &self.snakes {
+                    if other_id != socket_id && other_snake.alive && other_snake.spawned {
+                        let other_head = other_snake.head();
+                        let dist = (head.x - other_head.x).abs() + (head.y - other_head.y).abs();
+                        if dist <= radius {
+                            to_kill.push(other_id.clone());
+                        }
+                    }
+                }
+                for id in to_kill {
+                    self.kill_snake(&id, "BOMB");
+                    self.drop_powerup(&id);
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn update_snake(&mut self, socket_id: &str, now: i64) {
         let mut snake = match self.snakes.remove(socket_id) {
             Some(s) => s,
@@ -251,14 +327,15 @@ impl GameState {
         snake.dir = snake.next_dir;
         let head = snake.head();
         let dir_point = snake.dir.to_point();
-        let new_head = Point::new(head.x + dir_point.x, head.y + dir_point.y);
+        let mut new_head = Point::new(head.x + dir_point.x, head.y + dir_point.y);
 
-        if !ghost_active
-            && !super_active
-            && (new_head.x < 0
-                || new_head.x >= CONFIG.cols as i32
-                || new_head.y < 0
-                || new_head.y >= CONFIG.rows as i32)
+        if ghost_active || super_active {
+            new_head.x = (new_head.x + CONFIG.cols as i32) % (CONFIG.cols as i32);
+            new_head.y = (new_head.y + CONFIG.rows as i32) % (CONFIG.rows as i32);
+        } else if new_head.x < 0
+            || new_head.x >= CONFIG.cols as i32
+            || new_head.y < 0
+            || new_head.y >= CONFIG.rows as i32
         {
             if shield_active {
                 let safe_dir = if new_head.x < 0 {
@@ -338,6 +415,38 @@ impl GameState {
         if let Some(other_id) = kill_other {
             self.kill_snake(&other_id, "RAM");
             self.drop_powerup(&other_id);
+        }
+
+        let magnet_active = snake
+            .active_effects
+            .magnet
+            .map(|t| t > now)
+            .unwrap_or(false)
+            || super_active;
+        if magnet_active {
+            let pull_radius = 5;
+            for food in self.foods.values_mut() {
+                let dx = new_head.x - food.x;
+                let dy = new_head.y - food.y;
+                if dx.abs() + dy.abs() <= pull_radius && dx.abs() + dy.abs() > 0 {
+                    if dx.abs() > dy.abs() {
+                        food.x += dx.signum();
+                    } else {
+                        food.y += dy.signum();
+                    }
+                }
+            }
+            for bf in &mut self.bonus_foods {
+                let dx = new_head.x - bf.x;
+                let dy = new_head.y - bf.y;
+                if dx.abs() + dy.abs() <= pull_radius && dx.abs() + dy.abs() > 0 {
+                    if dx.abs() > dy.abs() {
+                        bf.x += dx.signum();
+                    } else {
+                        bf.y += dy.signum();
+                    }
+                }
+            }
         }
 
         let mut grew = false;
@@ -472,24 +581,6 @@ impl GameState {
                     snake.active_effects.super_mode = None;
                     snake.super_mode_start = None;
                     tracing::info!("[SUPER] {} SUPER MODE ended", snake.color);
-                }
-            }
-        }
-
-        if let Some(ghost_end) = snake.active_effects.ghost {
-            if ghost_end <= now {
-                let head = snake.head();
-                if head.x < 0
-                    || head.x >= CONFIG.cols as i32
-                    || head.y < 0
-                    || head.y >= CONFIG.rows as i32
-                {
-                    snake.alive = false;
-                    snake.death_reason = Some("GHOST_OUT".to_string());
-                    tracing::info!("[DEATH] {} {} died: GHOST_OUT", snake.color, snake.name);
-                    self.snakes.insert(socket_id.to_string(), snake);
-                    self.drop_powerup(socket_id);
-                    return;
                 }
             }
         }
