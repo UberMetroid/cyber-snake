@@ -12,18 +12,21 @@
     justify-content: center;
     align-items: center;
     min-height: 100vh;
-    overflow: hidden;
     font-family: 'Courier New', monospace;
     color: #0ff;
+    padding: 10px;
+    touch-action: none; /* Prevents pull-to-refresh and zooming on mobile */
   }
   #container {
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 0;
+    width: 100%;
+    max-width: 600px;
   }
   #header {
-    width: 600px;
+    width: 100%;
     padding: 10px 0;
     display: flex;
     justify-content: center;
@@ -50,21 +53,25 @@
   }
   canvas {
     display: block;
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1 / 1;
     border: 2px solid #0ff;
     box-shadow: 0 0 20px #0ff, inset 0 0 20px rgba(0, 255, 255, 0.1);
   }
   #stats {
-    width: 600px;
+    width: 100%;
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding: 10px 0;
-    font-size: 14px;
-    letter-spacing: 2px;
+    font-size: 12px; /* Smaller for mobile fit */
+    letter-spacing: 1px;
+    flex-wrap: wrap;
   }
   #stats .label { color: #0ff; text-shadow: 0 0 10px #0ff; }
-  #stats .value { color: #fff; min-width: 60px; text-align: right; }
-  #stats .stat-item { display: flex; align-items: center; gap: 8px; }
+  #stats .value { color: #fff; min-width: 40px; text-align: right; }
+  #stats .stat-item { display: flex; align-items: center; gap: 4px; margin-bottom: 5px; }
   #powerup-indicator {
     display: flex;
     align-items: center;
@@ -88,7 +95,7 @@
   }
   #super-meter-container .label { color: #ffff00; text-shadow: 0 0 10px #ffff00; }
   #super-meter-bar {
-    width: 100px;
+    width: 80px;
     height: 16px;
     border: 2px solid #ffff00;
     background: rgba(0,0,0,0.5);
@@ -109,11 +116,12 @@
     50% { box-shadow: 0 0 25px #ff00ff; }
   }
   #scoreboard {
-    width: 600px;
+    width: 100%;
     background: rgba(0, 0, 0, 0.8);
     border: 1px solid #0ff;
     padding: 10px;
     font-size: 12px;
+    margin-bottom: 10px;
   }
   #scoreboard h3 {
     color: #0ff;
@@ -132,6 +140,56 @@
   .player-row .points { color: #0ff; }
   .player-row.dead .name { text-decoration: line-through; opacity: 0.5; }
   .player-row.self .name { color: #fff; }
+  
+  /* Mobile D-Pad Controls */
+  #mobileControls {
+    display: none;
+    width: 100%;
+    justify-content: center;
+    margin-top: 10px;
+  }
+  @media (pointer: coarse) {
+    #mobileControls {
+      display: flex;
+    }
+  }
+  .dpad {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+  .dpad-row {
+    display: flex;
+    gap: 8px;
+  }
+  .dbtn {
+    background: rgba(0, 255, 255, 0.1);
+    border: 2px solid #0ff;
+    color: #0ff;
+    width: 60px;
+    height: 60px;
+    font-size: 24px;
+    border-radius: 12px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    touch-action: manipulation;
+    user-select: none;
+  }
+  .dbtn:active {
+    background: rgba(0, 255, 255, 0.4);
+    box-shadow: 0 0 15px #0ff;
+  }
+  .dbtn.action {
+    background: rgba(255, 0, 255, 0.1);
+    border-color: #f0f;
+    color: #f0f;
+  }
+  .dbtn.action:active {
+    background: rgba(255, 0, 255, 0.4);
+    box-shadow: 0 0 15px #f0f;
+  }
   #overlay {
     position: fixed;
     top: 0;
@@ -232,6 +290,18 @@
     </div>
   </div>
   <div id="debug" style="display:none; width:600px; background:rgba(0,0,0,0.8); border:1px solid #0ff; padding:5px; font-size:11px; color:#0ff;"></div>
+  <div id="mobileControls">
+    <div class="dpad">
+      <div id="btnUp" class="dbtn">▲</div>
+      <div class="dpad-row">
+        <div id="btnLeft" class="dbtn">◀</div>
+        <div id="btnAction" class="dbtn action">■</div>
+        <div id="btnRight" class="dbtn">▶</div>
+      </div>
+      <div id="btnDown" class="dbtn">▼</div>
+    </div>
+  </div>
+  
   <div id="scoreboard">
     <h3>// SCOREBOARD</h3>
     <div id="scores"></div>
@@ -860,6 +930,42 @@ document.addEventListener('keydown', (e) => {
   if (dir) {
     send('input', { dir });
     e.preventDefault();
+  }
+});
+
+function handleMobileInput(dir) {
+  if (!alive || !spawned) return;
+  send('input', { dir });
+}
+
+document.getElementById('btnUp').addEventListener('touchstart', (e) => { e.preventDefault(); handleMobileInput('up'); });
+document.getElementById('btnDown').addEventListener('touchstart', (e) => { e.preventDefault(); handleMobileInput('down'); });
+document.getElementById('btnLeft').addEventListener('touchstart', (e) => { e.preventDefault(); handleMobileInput('left'); });
+document.getElementById('btnRight').addEventListener('touchstart', (e) => { e.preventDefault(); handleMobileInput('right'); });
+document.getElementById('btnAction').addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (overlay.classList.contains('show')) {
+    respawn();
+  } else if (!spawned) {
+    spawn();
+  } else if (alive && heldPowerup) {
+    send('activatePowerup');
+  }
+});
+
+// Also bind mousedown for testing mobile controls on desktop
+document.getElementById('btnUp').addEventListener('mousedown', (e) => { e.preventDefault(); handleMobileInput('up'); });
+document.getElementById('btnDown').addEventListener('mousedown', (e) => { e.preventDefault(); handleMobileInput('down'); });
+document.getElementById('btnLeft').addEventListener('mousedown', (e) => { e.preventDefault(); handleMobileInput('left'); });
+document.getElementById('btnRight').addEventListener('mousedown', (e) => { e.preventDefault(); handleMobileInput('right'); });
+document.getElementById('btnAction').addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  if (overlay.classList.contains('show')) {
+    respawn();
+  } else if (!spawned) {
+    spawn();
+  } else if (alive && heldPowerup) {
+    send('activatePowerup');
   }
 });
 
