@@ -19,8 +19,8 @@ services:
     image: ghcr.io/ubermetroid/cyber-snake:latest
     container_name: cyber-snake
     ports:
-      - "${PORT:-3080}:3000"
-      - "${API_PORT:-3081}:3001"
+      - "${PORT:-8300}:8300"
+      - "${API_PORT:-8301}:8301"
     environment:
       - TZ=${TZ:-UTC}
       - RUST_LOG=${RUST_LOG:-info}
@@ -36,7 +36,7 @@ services:
       - /volume1/docker/cyber-snake/logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3001/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8301/health"]
       interval: 30s
       timeout: 10s
       retries: 3

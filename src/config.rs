@@ -23,9 +23,9 @@ impl Config {
 
         Self {
             port: env::var("PORT")
-                .unwrap_or_else(|_| "3000".into())
+                .unwrap_or_else(|_| "8300".into())
                 .parse()
-                .unwrap_or(3000),
+                .unwrap_or(8300),
             timezone: env::var("TZ").unwrap_or_else(|_| "UTC".into()),
             max_players: env::var("MAX_PLAYERS")
                 .unwrap_or_else(|_| "10".into())
