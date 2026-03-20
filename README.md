@@ -20,7 +20,6 @@ services:
     container_name: cyber-snake
     ports:
       - "${PORT:-8300}:8300"
-      - "${API_PORT:-8301}:8301"
     environment:
       - TZ=${TZ:-UTC}
       - RUST_LOG=${RUST_LOG:-info}
@@ -36,7 +35,7 @@ services:
       - /volume1/docker/cyber-snake/logs:/app/logs
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8301/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8300/health"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -28,7 +28,7 @@ RUN mkdir -p /app/data /app/logs && chown -R app:app /app
 
 USER app
 
-EXPOSE 8300 8301
+EXPOSE 8300
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/app/cyber-snake"]

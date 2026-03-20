@@ -4,7 +4,7 @@ mod server;
 
 use crate::config::CONFIG;
 use crate::game::SharedGameState;
-use crate::server::{start_http_server, start_ws_server, SharedPlayerSockets};
+use crate::server::{start_server, SharedPlayerSockets};
 use std::fs;
 use tokio::time::{interval, Duration};
 use tracing::info;
@@ -50,13 +50,7 @@ async fn main() {
     let state_clone = state.clone();
     let sockets_clone = player_sockets.clone();
     tokio::spawn(async move {
-        start_ws_server(state_clone, sockets_clone).await;
-    });
-
-    let state_http = state.clone();
-    let sockets_http = player_sockets.clone();
-    tokio::spawn(async move {
-        start_http_server(state_http, sockets_http).await;
+        start_server(state_clone, sockets_clone).await;
     });
 
     let mut ticker = interval(Duration::from_millis(1000 / CONFIG.tick_rate));
