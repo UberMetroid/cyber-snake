@@ -3,6 +3,7 @@ use rand::Rng;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Food {
     pub owner_id: String,
     pub x: i32,
@@ -32,6 +33,7 @@ impl Food {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BonusFood {
     pub x: i32,
     pub y: i32,

@@ -40,6 +40,7 @@ impl PowerupType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Powerup {
     pub x: i32,
     pub y: i32,

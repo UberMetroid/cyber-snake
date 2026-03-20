@@ -33,6 +33,7 @@ impl Direction {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Snake {
     pub id: String,
     pub segments: Vec<Point>,

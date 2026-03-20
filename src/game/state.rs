@@ -543,6 +543,7 @@ impl GameState {
 
     pub fn broadcast_state(&self) -> GameBroadcast<'_> {
         GameBroadcast {
+            msg_type: "gameState",
             snakes: &self.snakes,
             foods: &self.foods,
             bonus_foods: &self.bonus_foods,
@@ -553,7 +554,10 @@ impl GameState {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GameBroadcast<'a> {
+    #[serde(rename = "type")]
+    pub msg_type: &'static str,
     #[serde(borrow)]
     pub snakes: &'a HashMap<String, Snake>,
     #[serde(borrow)]
