@@ -41,6 +41,16 @@ impl PowerupType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct Explosion {
+    pub x: i32,
+    pub y: i32,
+    pub radius: i32,
+    pub color: String,
+    pub expires_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Powerup {
     pub x: i32,
     pub y: i32,

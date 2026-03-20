@@ -1,7 +1,7 @@
 use crate::config::CONFIG;
 use crate::game::{
     get_bonus_color, get_next_color, random_name, BonusFood, Direction, Food, HighScore, Point,
-    Powerup, PowerupType, Snake,
+    Powerup, PowerupType, Snake, Explosion,
 };
 use chrono::Utc;
 use parking_lot::RwLock;
@@ -15,6 +15,7 @@ pub struct GameState {
     pub foods: HashMap<String, Food>,
     pub bonus_foods: Vec<BonusFood>,
     pub powerups: Vec<Powerup>,
+    pub explosions: Vec<Explosion>,
     pub high_scores: Vec<HighScore>,
     pub tick: u64,
     pub start_time: i64,
@@ -27,6 +28,7 @@ impl GameState {
             foods: HashMap::new(),
             bonus_foods: Vec::new(),
             powerups: Vec::new(),
+            explosions: Vec::new(),
             high_scores: Vec::new(),
             tick: 0,
             start_time: Utc::now().timestamp_millis(),
@@ -182,6 +184,7 @@ impl GameState {
         self.foods.retain(|_, food| !food.is_expired());
         self.bonus_foods.retain(|bf| !bf.is_expired());
         self.powerups.retain(|pu| !pu.is_expired());
+        self.explosions.retain(|e| e.expires_at > now);
 
         if self.bonus_foods.len() < 2 && self.tick.is_multiple_of(480) {
             self.spawn_bonus_food();
@@ -274,6 +277,14 @@ impl GameState {
                     self.kill_snake(&id, "BOMB");
                     self.drop_powerup(&id);
                 }
+
+                self.explosions.push(Explosion {
+                    x: head.x,
+                    y: head.y,
+                    radius,
+                    color: "#ff0000".to_string(),
+                    expires_at: now + 500, // 500ms duration for explosion animation
+                });
             }
             _ => {}
         }
@@ -639,6 +650,7 @@ impl GameState {
             foods: &self.foods,
             bonus_foods: &self.bonus_foods,
             powerups: &self.powerups,
+            explosions: &self.explosions,
             tick: self.tick,
         }
     }
@@ -657,6 +669,8 @@ pub struct GameBroadcast<'a> {
     pub bonus_foods: &'a Vec<BonusFood>,
     #[serde(borrow)]
     pub powerups: &'a Vec<Powerup>,
+    #[serde(borrow)]
+    pub explosions: &'a Vec<Explosion>,
     pub tick: u64,
 }
 

@@ -352,6 +352,9 @@ function handleMessage(msg) {
         powerups: msg.powerups || [],
         tick: msg.tick || 0
       };
+      if (msg.explosions) {
+        explosions = msg.explosions;
+      }
       updateUI();
       break;
       
@@ -698,6 +701,36 @@ function drawBonusFoods() {
   ctx.shadowBlur = 0;
 }
 
+function drawExplosions() {
+  const now = Date.now();
+  for (const exp of explosions) {
+    const timeLeft = exp.expiresAt - now;
+    if (timeLeft <= 0) continue;
+    
+    // Calculate animation progress (0.0 to 1.0) based on 500ms total duration
+    const progress = 1 - (timeLeft / 500);
+    const currentRadius = (exp.radius * GRID) * Math.min(progress * 1.5, 1);
+    const alpha = Math.max(0, 1 - progress);
+    
+    const cx = exp.x * GRID + GRID / 2;
+    const cy = exp.y * GRID + GRID / 2;
+    
+    ctx.beginPath();
+    ctx.arc(cx, cy, currentRadius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255, 0, 0, ${alpha * 0.3})`;
+    ctx.fill();
+    
+    ctx.beginPath();
+    ctx.arc(cx, cy, currentRadius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(255, 100, 100, ${alpha})`;
+    ctx.lineWidth = 3;
+    ctx.shadowColor = '#ff0000';
+    ctx.shadowBlur = 20;
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+}
+
 function draw() {
   frameCount++;
   const now = Date.now();
@@ -717,6 +750,7 @@ function draw() {
   drawFood();
   drawBonusFoods();
   drawPowerup();
+  drawExplosions();
   drawSnakes();
   
   if (debugMode) {
