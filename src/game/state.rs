@@ -221,6 +221,90 @@ impl GameState {
         self.powerups.retain(|pu| !pu.is_expired());
         self.explosions.retain(|e| e.expires_at > now);
 
+        let mut dead_bots = Vec::new();
+        for (id, snake) in &self.snakes {
+            if snake.is_bot && !snake.alive {
+                dead_bots.push(id.clone());
+            }
+        }
+        for id in dead_bots {
+            self.remove_snake(&id);
+        }
+
+        let active_bots = self.snakes.values().filter(|s| s.is_bot && s.alive).count();
+        if active_bots < 3 {
+            for _ in 0..(3 - active_bots) {
+                let id = format!("bot_{}", uuid::Uuid::new_v4());
+                let mut bot = self.create_snake(id.clone());
+                bot.is_bot = true;
+                self.snakes.insert(id.clone(), bot);
+                self.spawn_snake(&id);
+            }
+        }
+
+        let bot_ids: Vec<String> = self
+            .snakes
+            .values()
+            .filter(|s| s.is_bot && s.alive && s.spawned)
+            .map(|s| s.id.clone())
+            .collect();
+
+        for id in bot_ids {
+            let mut is_hazard = false;
+            let (next_x, next_y, dir) = {
+                let bot = self.snakes.get(&id).unwrap();
+                let head = bot.head();
+                let dir_point = bot.dir.to_point();
+                (head.x + dir_point.x, head.y + dir_point.y, bot.dir)
+            };
+
+            if next_x < 0
+                || next_x >= CONFIG.cols as i32
+                || next_y < 0
+                || next_y >= CONFIG.rows as i32
+            {
+                is_hazard = true;
+            } else {
+                for other in self.snakes.values() {
+                    if !other.alive || !other.spawned {
+                        continue;
+                    }
+                    for seg in &other.segments {
+                        if seg.x == next_x && seg.y == next_y {
+                            is_hazard = true;
+                            break;
+                        }
+                    }
+                    if is_hazard {
+                        break;
+                    }
+                }
+            }
+
+            if is_hazard {
+                let mut rng = rand::thread_rng();
+                let new_dir = match dir {
+                    Direction::Up | Direction::Down => {
+                        if rng.gen_bool(0.5) {
+                            Direction::Left
+                        } else {
+                            Direction::Right
+                        }
+                    }
+                    Direction::Left | Direction::Right => {
+                        if rng.gen_bool(0.5) {
+                            Direction::Up
+                        } else {
+                            Direction::Down
+                        }
+                    }
+                };
+                if let Some(bot) = self.snakes.get_mut(&id) {
+                    bot.next_dir = new_dir;
+                }
+            }
+        }
+
         if self.bonus_foods.len() < 2 && self.tick.is_multiple_of(480) {
             self.spawn_bonus_food();
         }
