@@ -232,8 +232,8 @@ impl GameState {
         }
 
         let active_bots = self.snakes.values().filter(|s| s.is_bot && s.alive).count();
-        if active_bots < 3 {
-            for _ in 0..(3 - active_bots) {
+        if active_bots < 2 {
+            for _ in 0..(2 - active_bots) {
                 let id = format!("bot_{}", uuid::Uuid::new_v4());
                 let mut bot = self.create_snake(id.clone());
                 bot.is_bot = true;
@@ -250,58 +250,103 @@ impl GameState {
             .collect();
 
         for id in bot_ids {
-            let mut is_hazard = false;
-            let (next_x, next_y, dir) = {
+            let (head, current_dir) = {
                 let bot = self.snakes.get(&id).unwrap();
-                let head = bot.head();
-                let dir_point = bot.dir.to_point();
-                (head.x + dir_point.x, head.y + dir_point.y, bot.dir)
+                (bot.head(), bot.dir)
             };
 
-            if next_x < 0
-                || next_x >= CONFIG.cols as i32
-                || next_y < 0
-                || next_y >= CONFIG.rows as i32
-            {
-                is_hazard = true;
-            } else {
-                for other in self.snakes.values() {
-                    if !other.alive || !other.spawned {
-                        continue;
-                    }
-                    for seg in &other.segments {
-                        if seg.x == next_x && seg.y == next_y {
-                            is_hazard = true;
-                            break;
-                        }
-                    }
-                    if is_hazard {
-                        break;
-                    }
+            // Find nearest food
+            let mut nearest_food = None;
+            let mut min_dist = i32::MAX;
+            for food in self.foods.values() {
+                let dist = (head.x - food.x).abs() + (head.y - food.y).abs();
+                if dist < min_dist {
+                    min_dist = dist;
+                    nearest_food = Some(Point::new(food.x, food.y));
                 }
             }
 
-            if is_hazard {
-                let mut rng = rand::thread_rng();
-                let new_dir = match dir {
-                    Direction::Up | Direction::Down => {
-                        if rng.gen_bool(0.5) {
-                            Direction::Left
-                        } else {
-                            Direction::Right
-                        }
-                    }
-                    Direction::Left | Direction::Right => {
-                        if rng.gen_bool(0.5) {
-                            Direction::Up
-                        } else {
-                            Direction::Down
-                        }
-                    }
-                };
-                if let Some(bot) = self.snakes.get_mut(&id) {
-                    bot.next_dir = new_dir;
+            for bf in &self.bonus_foods {
+                let dist = (head.x - bf.x).abs() + (head.y - bf.y).abs();
+                if dist < min_dist {
+                    min_dist = dist;
+                    nearest_food = Some(Point::new(bf.x, bf.y));
                 }
+            }
+
+            let possible_dirs = match current_dir {
+                Direction::Up => vec![Direction::Up, Direction::Left, Direction::Right],
+                Direction::Down => vec![Direction::Down, Direction::Left, Direction::Right],
+                Direction::Left => vec![Direction::Left, Direction::Up, Direction::Down],
+                Direction::Right => vec![Direction::Right, Direction::Up, Direction::Down],
+            };
+
+            let mut valid_dirs = Vec::new();
+
+            for dir in possible_dirs {
+                let dir_point = dir.to_point();
+                let next_x = head.x + dir_point.x;
+                let next_y = head.y + dir_point.y;
+
+                let mut is_hazard = false;
+                if next_x < 0
+                    || next_x >= CONFIG.cols as i32
+                    || next_y < 0
+                    || next_y >= CONFIG.rows as i32
+                {
+                    is_hazard = true;
+                } else {
+                    for other in self.snakes.values() {
+                        if !other.alive || !other.spawned {
+                            continue;
+                        }
+                        for seg in &other.segments {
+                            if seg.x == next_x && seg.y == next_y {
+                                is_hazard = true;
+                                break;
+                            }
+                        }
+                        if is_hazard {
+                            break;
+                        }
+                    }
+                }
+
+                if !is_hazard {
+                    valid_dirs.push(dir);
+                }
+            }
+
+            let mut best_dir = current_dir;
+
+            // Default to any safe turn if current path is blocked
+            if !valid_dirs.contains(&current_dir) && !valid_dirs.is_empty() {
+                best_dir = valid_dirs[0];
+            }
+
+            // Pathfind to food if possible and safe
+            if !valid_dirs.is_empty() {
+                if let Some(food_pos) = nearest_food {
+                    let mut best_dist = i32::MAX;
+                    for dir in valid_dirs.iter() {
+                        let dp = dir.to_point();
+                        let nx = head.x + dp.x;
+                        let ny = head.y + dp.y;
+                        let dist = (nx - food_pos.x).abs() + (ny - food_pos.y).abs();
+                        if dist < best_dist {
+                            best_dist = dist;
+                            best_dir = *dir;
+                        }
+                    }
+                } else if !valid_dirs.contains(&current_dir) {
+                    // Random valid turn if no food
+                    let mut rng = rand::thread_rng();
+                    best_dir = valid_dirs[rng.gen_range(0..valid_dirs.len())];
+                }
+            }
+
+            if let Some(bot) = self.snakes.get_mut(&id) {
+                bot.next_dir = best_dir;
             }
         }
 
