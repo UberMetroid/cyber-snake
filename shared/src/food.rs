@@ -1,7 +1,9 @@
-use chrono::Utc;
+//! Food types for the game.
+
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
+/// Food item dropped by snakes.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Food {
@@ -23,15 +25,16 @@ impl Food {
             color,
             is_super,
             is_ring: rand::thread_rng().gen_bool(0.5),
-            expires_at: Utc::now().timestamp_millis() + 60000,
+            expires_at: chrono::Utc::now().timestamp_millis() + 60000,
         }
     }
 
     pub fn is_expired(&self) -> bool {
-        Utc::now().timestamp_millis() > self.expires_at
+        chrono::Utc::now().timestamp_millis() > self.expires_at
     }
 }
 
+/// Bonus food spawned from dead snake segments.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BonusFood {
@@ -49,29 +52,23 @@ impl BonusFood {
             y,
             color,
             is_ring,
-            expires_at: Utc::now().timestamp_millis() + 60000,
+            expires_at: chrono::Utc::now().timestamp_millis() + 60000,
         }
     }
 
     pub fn is_expired(&self) -> bool {
-        Utc::now().timestamp_millis() > self.expires_at
+        chrono::Utc::now().timestamp_millis() > self.expires_at
     }
 }
 
-pub const BONUS_COLORS: [&str; 6] = [
-    "#ffd700", "#ffffff", "#ff69b4", "#00ff99", "#ff6600", "#99ff00",
-];
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-pub fn get_bonus_color(used_colors: &[String]) -> String {
-    let available: Vec<&str> = BONUS_COLORS
-        .iter()
-        .copied()
-        .filter(|c| !used_colors.contains(&c.to_string()))
-        .collect();
-
-    if available.is_empty() {
-        BONUS_COLORS[rand::thread_rng().gen_range(0..BONUS_COLORS.len())].to_string()
-    } else {
-        available[rand::thread_rng().gen_range(0..available.len())].to_string()
+    #[test]
+    fn test_food_is_expired() {
+        let mut food = Food::new("id".to_string(), "#ff0000".to_string(), 5, 5, false);
+        food.expires_at = chrono::Utc::now().timestamp_millis() - 1;
+        assert!(food.is_expired());
     }
 }

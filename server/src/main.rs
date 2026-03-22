@@ -47,8 +47,8 @@ async fn main() {
         game.tick();
 
         let broadcast = game.broadcast_state();
-        if let Ok(json) = serde_json::to_string(&broadcast) {
-            player_sockets.broadcast(&json);
+        if let Ok(msgpack) = rmp_serde::to_vec_named(&broadcast) {
+            player_sockets.broadcast(msgpack);
         }
     }
 }

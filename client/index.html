@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Cyber-Snake - A multiplayer real-time Snake game written in Rust">
+    <meta name="theme-color" content="#050508">
+    <title>CYBER_SNAKE</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html {
+            width: 100%;
+            height: 100%;
+            background-color: #050508;
+            overflow: hidden;
+            font-family: sans-serif;
+        }
+        #game-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas {
+            display: block;
+            outline: none;
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px #0ff, inset 0 0 20px rgba(0, 255, 255, 0.1);
+        }
+        canvas:focus {
+            border-color: #ff00ff;
+            box-shadow: 0 0 30px #ff00ff, inset 0 0 30px rgba(255, 0, 255, 0.1);
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #0ff;
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 0 0 10px #0ff;
+        }
+        .sr-only {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas 
+            id="glcanvas" 
+            tabindex="1" 
+            role="application" 
+            aria-label="Cyber-Snake game canvas. Use arrow keys to control your snake."
+            aria-describedby="game-instructions"
+        ></canvas>
+        <div id="instructions" aria-live="polite">
+            Press SPACE to spawn | Arrow keys to move
+        </div>
+        <div id="game-instructions" class="sr-only">
+            Use the arrow keys on your keyboard to change the direction of your snake. 
+            Press the spacebar to spawn your snake at the beginning of the game or to respawn after dying.
+            Collect food to grow longer and earn points. Avoid hitting walls and your own tail.
+            Collect powerups for special abilities like speed boost, shield, and bomb.
+        </div>
+    </div>
+    <script type="module">
+        import init from '/client.js';
+        init().then(() => {
+            if (window.cyber_snake) {
+                window.cyber_snake.start();
+            }
+        });
+    </script>
+</body>
+</html>
