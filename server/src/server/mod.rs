@@ -1,5 +1,5 @@
 //! HTTP and WebSocket server module.
-//! Handles routing, player socket management, and server startup.
+//! Handles routing, player socket management, graceful shutdown, and server startup.
 
 pub mod handlers;
 
@@ -9,6 +9,7 @@ use crate::server::handlers::{
     health_handler, highscores_handler, stats_handler, ws_handler, AppState,
 };
 use axum::routing::get;
+use axum::Router;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,11 +17,8 @@ use tokio::sync::broadcast;
 use tower_http::services::ServeDir;
 use tracing::info;
 
-/// Broadcast sender type for player communication.
 pub type BroadcastSender = broadcast::Sender<Vec<u8>>;
 
-/// Manages all connected player WebSocket senders.
-/// Thread-safe container for broadcast channels.
 #[derive(Clone)]
 pub struct SharedPlayerSockets(pub Arc<RwLock<HashMap<String, BroadcastSender>>>);
 
@@ -31,12 +29,10 @@ impl Default for SharedPlayerSockets {
 }
 
 impl SharedPlayerSockets {
-    /// Creates a new empty player sockets manager.
     pub fn new() -> Self {
         Self(Arc::new(RwLock::new(HashMap::new())))
     }
 
-    /// Broadcasts a message to all connected players.
     pub fn broadcast(&self, message: Vec<u8>) {
         for sender in self.0.read().values() {
             let _ = sender.send(message.clone());
@@ -44,14 +40,17 @@ impl SharedPlayerSockets {
     }
 }
 
-/// Starts the HTTP and WebSocket server.
-pub async fn start_server(state: SharedGameState, player_sockets: SharedPlayerSockets) {
+pub async fn start_server(
+    state: SharedGameState,
+    player_sockets: SharedPlayerSockets,
+    mut shutdown: broadcast::Receiver<()>,
+) {
     let app_state = AppState {
         game_state: state,
-        player_sockets,
+        player_sockets: player_sockets.clone(),
     };
 
-    let app = axum::Router::new()
+    let app = Router::new()
         .route("/health", get(health_handler))
         .route("/stats", get(stats_handler))
         .route("/admin/highscores", get(highscores_handler))
@@ -63,5 +62,16 @@ pub async fn start_server(state: SharedGameState, player_sockets: SharedPlayerSo
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     info!("[SERVER] HTTP and WebSocket server listening on {}", addr);
 
-    axum::serve(listener, app).await.unwrap();
+    let server = axum::serve(listener, app);
+
+    tokio::select! {
+        result = server => {
+            if let Err(e) = result {
+                tracing::error!("[SERVER] Axum server error: {}", e);
+            }
+        }
+        _ = shutdown.recv() => {
+            info!("[SERVER] Shutdown signal received, stopping server...");
+        }
+    }
 }

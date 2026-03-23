@@ -32,7 +32,6 @@ pub fn calculate_effective_speed(snake: &Snake, now: i64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::{Direction, Point};
 
     fn create_test_snake() -> Snake {
         Snake::new(

@@ -1,6 +1,6 @@
 //! HTTP request handlers for health, stats, and highscores endpoints.
 
-use super::ws::AppState;
+use crate::server::handlers::ws::AppState;
 use crate::config::CONFIG;
 use axum::{extract::State, response::Json};
 use serde::Serialize;
@@ -10,6 +10,7 @@ use std::sync::Arc;
 #[derive(Serialize)]
 pub struct HealthResponse {
     status: String,
+    shutting_down: bool,
     uptime_seconds: i64,
     players_online: usize,
 }
@@ -41,6 +42,7 @@ pub struct HighScoresResponse {
 }
 
 /// Handler for GET /health - returns server health status.
+/// Used by Docker healthcheck and Cloudflare uptime monitoring.
 pub async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthResponse> {
     let game = state.game_state.0.read();
     let start_time = game.start_time;
@@ -49,6 +51,7 @@ pub async fn health_handler(State(state): State<Arc<AppState>>) -> Json<HealthRe
 
     Json(HealthResponse {
         status: "ok".to_string(),
+        shutting_down: false,
         uptime_seconds: uptime,
         players_online: game
             .snakes

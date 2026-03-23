@@ -1,19 +1,23 @@
 version: '3.8'
 services:
   cyber-snake:
-    image: ghcr.io/ubermetroid/cyber-snake:latest
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    image: cyber-snake:latest
     container_name: cyber-snake
     ports:
       - "${PORT:-8300}:8300"
     environment:
-      - TZ=${TZ:-UTC}
+      - PORT=${PORT:-8300}
       - RUST_LOG=${RUST_LOG:-info}
-      - MAX_PLAYERS=${MAX_PLAYERS:-10}
+      - TZ=${TZ:-UTC}
+      - MAX_PLAYERS=${MAX_PLAYERS:-50}
       - TICK_RATE=${TICK_RATE:-20}
-      - COLS=${COLS:-30}
-      - ROWS=${ROWS:-30}
+      - COLS=${COLS:-100}
+      - ROWS=${ROWS:-100}
     volumes:
-      - ./data:/app/data
+      - cyber-snake-data:/app/data
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:8300/health"]
@@ -21,3 +25,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+
+volumes:
+  cyber-snake-data:
+    driver: local

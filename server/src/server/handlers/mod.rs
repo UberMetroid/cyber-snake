@@ -2,6 +2,7 @@
 
 pub mod http;
 pub mod messages;
+pub mod rate_limiter;
 pub mod ws;
 
 pub use http::{health_handler, highscores_handler, stats_handler};

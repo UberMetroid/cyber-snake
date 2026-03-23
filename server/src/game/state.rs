@@ -242,4 +242,15 @@ impl GameState {
             self.tick,
         )
     }
+
+    pub fn save_state(&self) {
+        if let Err(e) = std::fs::write(
+            "data/game_state.json",
+            serde_json::to_string_pretty(&self.tick).unwrap_or_default(),
+        ) {
+            tracing::error!("[SAVE] Failed to save game state: {}", e);
+        } else {
+            tracing::info!("[SAVE] Game state saved successfully");
+        }
+    }
 }
